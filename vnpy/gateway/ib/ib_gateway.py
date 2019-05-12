@@ -269,7 +269,7 @@ class IbApi(EWrapper):
 
     def tickSize(
         self, reqId: TickerId, tickType: TickType, size: int
-    ):  # pylint: disable=invalid-name
+    ):  # pylint: disable=invalid-namef
         """
         Callback of tick volume update.
         """
@@ -414,9 +414,11 @@ class IbApi(EWrapper):
             accountName,
         )
 
-        ib_size = float(contract.multiplier)
-        if not ib_size:
+
+        if not contract.multiplier:
             ib_size = 1
+        else:
+            ib_size = float(contract.multiplier)
         price = averageCost / ib_size
         exchange = contract.exchange if contract.exchange else contract.primaryExchange
 
@@ -447,11 +449,12 @@ class IbApi(EWrapper):
 
         ib_symbol = contractDetails.contract.conId
         ib_exchange = contractDetails.contract.exchange
-        ib_size = float(contractDetails.contract.multiplier)
         ib_product = contractDetails.contract.secType
 
-        if not ib_size:
+        if not contractDetails.contract.multiplier:
             ib_size = 1
+        else:
+            ib_size = float(contractDetails.contract.multiplier)
 
         contract = ContractData(
             symbol=ib_symbol,
