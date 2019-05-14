@@ -12,7 +12,6 @@ from pyqtgraph.Qt import QtGui, QtCore
 from PyQt5.Qt import QFont
 import time
 from abc import ABC, abstractmethod
-from util import V_logger
 
 
 class CandlestickItem(pg.GraphicsObject):

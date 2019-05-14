@@ -6,7 +6,8 @@
 
 
 
-from datetime import datetime
+import datetime as dt
+
 from typing import List, Dict
 
 from vnpy.trader.constant import Exchange, Interval
@@ -22,7 +23,9 @@ from threading import Thread
 from dateutil import parser
 from vnpy.trader.object import SubscribeRequest
 from vnpy.gateway.ib.ib_gateway import EXCHANGE_IB2VT, EXCHANGE_VT2IB
-from ibapi.contract import Contract
+# from ibapi.contract import Contract
+import re
+from vnpy.trader.setting import get_settings
 
 class IBDataClient(EClient, EWrapper):
     """
@@ -35,17 +38,17 @@ class IBDataClient(EClient, EWrapper):
         settings.update(load_json(f'connect_IB.json'))
         self.host = settings['TWS地址']
         self.port = settings['TWS端口']
-        self.clientId = 20
+        self.clientId = 15
 
 
         self.inited = False
         self.thread = Thread(target=self.run)
-        self.data_queues: Dict[int, Queue] = {}
+        self.result_queues: Dict[int, Queue] = {}
+        self.reqId2subscription = {}
         self.reqId = 1
 
 
     def init(self):
-
         if self.inited:
             return True
 
@@ -61,37 +64,52 @@ class IBDataClient(EClient, EWrapper):
     def __del__(self):
         self.disconnect()
 
+    # def error(self, reqId, errorCode:int, errorString:str):
+    #     print(reqId, errorCode, errorString)
+
     def historicalData(self, reqId: int, bar: ibcommon.BarData):
-        self.data_queues[reqId].put(bar)
+        self.result_queues[reqId].put(bar)
+
+    def historicalDataUpdate(self, reqId: int, bar: BarData):
+        self.result_queues[reqId].put(bar)
 
     def historicalDataEnd(self, reqId:int, start:str, end:str):
         self.endReq(reqId)
 
     def contractDetails(self, reqId: int, contractDetails: ibcontract.ContractDetails):
-        self.data_queues[reqId].put(contractDetails.contract)
+        self.result_queues[reqId].put(contractDetails)
 
     def contractDetailsEnd(self, reqId:int):
         self.endReq(reqId)
 
-    def startReq(self, reqId: int):
-        self.reqId = reqId
-        self.data_queues[self.reqId] = Queue()
+    def startReq(self) -> int:
+        self.reqId += 1
+        self.result_queues[self.reqId] = Queue()
+        return self.reqId
 
     def endReq(self, reqId: int):
-        q = self.data_queues.pop(reqId)
-        q.put(reqId)
+        if reqId in self.result_queues and reqId not in self.reqId2subscription:
+            q = self.result_queues.pop(reqId)
+            q.put(reqId)
+
+        # if reqId in self.reqId2subscription:
+        #     subscription = self.reqId2subscription.pop(reqId)
+        #     print(f'{subscription[0]}-{subscription[1]}取消订阅')
 
     def query_bar(
         self,
         symbol: str,
         exchange: Exchange,
         interval: Interval,
-        start: datetime,
-        end: datetime
+        start: dt.datetime,
+        end: dt.datetime
     ):
         """
         Query bar data from IB.
         """
+        if not symbol.isdigit():
+            return self._query_bar_from_KRData(symbol, exchange, interval, start, end)
+
         barSizeSetting = {Interval.MINUTE: '1 min',
                           Interval.HOUR : '1 hour',
                           Interval.DAILY: '1 day',
@@ -102,39 +120,28 @@ class IBDataClient(EClient, EWrapper):
             raise ValueError('1 week barSizeSetting is not support!')
 
         delta = (end - start)
-        total_seconds = delta.total_seconds()
-        if total_seconds <= 86400:
-            durationStr = f'{int(delta.total_seconds() //60 * 60  + 60)} S'
-        elif total_seconds <= 86400 * 30:
-            durationStr = f'{int(min(delta.days + 1, 30))} D'
-        elif total_seconds < 86400 * 30 * 6:
-            durationStr = f'{int(min(delta.days // 30 + 1, 6))} M'
-        else:
-            durationStr = f'{int(delta.days // (30 * 12) + 1)} Y'
+        durationStr = self.timedelta2durationStr(delta)
 
         endDateTime = end.strftime('%Y%m%d %H:%M:%S')  # yyyymmdd HH:mm:ss
 
         contract = ibcontract.Contract()
         contract.exchange = exchange.value
         contract.conId = int(symbol)
-        self.reqId += 1
-        symbol_reqId = self.reqId
-        self.startReq(symbol_reqId)
-        symbol_queue = self.data_queues[symbol_reqId]
+        symbol_reqId = self.startReq()
+        symbol_queue = self.result_queues[symbol_reqId]
         self.reqContractDetails(symbol_reqId, contract)
 
         data: List[BarData] = []
         try:
             while True:
-                contract = symbol_queue.get(timeout=30)
-                print(contract)
+                contractDetail = symbol_queue.get(timeout=30)
+                print(contractDetail)
                 if isinstance(contract, int):
                     break
 
-                self.reqId += 1
-                self.startReq(self.reqId)
-                mkData_queue = self.data_queues[self.reqId]
-                self.reqHistoricalData(self.reqId, contract, endDateTime, durationStr, barSizeSetting, 'TRADES', False, 1, False, None)
+                mkdata_reqId = self.startReq()
+                mkData_queue = self.result_queues[mkdata_reqId]
+                self.reqHistoricalData(self.reqId, contractDetail.contract, endDateTime, durationStr, barSizeSetting, 'TRADES', False, 1, False, None)
                 while True:
                     ibBar: ibcommon.BarData = mkData_queue.get(timeout=60*10)
                     if isinstance(ibBar, int):
@@ -160,28 +167,78 @@ class IBDataClient(EClient, EWrapper):
         finally:
             return data
 
+    def _query_bar_from_KRData(
+        self,
+        symbol: str,
+        exchange: Exchange,
+        interval: Interval,
+        start: dt.datetime,
+        end: dt.datetime):
+
+        if interval != Interval.MINUTE:
+            print('暂不支持{interval}')
+
+        from KRData.HKData import HKFuture
+        db_setting = get_settings('database.')
+        if db_setting['driver'] != 'mongodb':
+            print('请先设置database为mongodb')
+            return []
+
+        hf = HKFuture(db_setting['user'], db_setting['password'], db_setting['host'], db_setting['port'])
+        start = dt.datetime.fromordinal(start.toordinal())
+        end = dt.datetime.fromordinal(end.toordinal())
+        if re.match(r'([A-Z]+)', symbol):
+            df = hf.get_main_contract_bars(symbol, start=start, end=end, ktype='1min')
+        elif re.match(r'([A-Z]+)(\d{2,})', symbol):
+            df = hf.get_bars(symbol, start=start, end=end, ktype='1min')
+        else:
+            print(f'不支持symbol{symbol}')
+            return []
+
+        data: List[BarData] = []
+        for d, bar in df.iterrows():
+            vt_bar = BarData(
+                symbol=symbol,
+                exchange=exchange,
+                interval=interval,
+                datetime=d,
+                open_price=bar.open,
+                high_price=bar.high,
+                low_price=bar.low,
+                close_price=bar.close,
+                volume=bar.volume,
+                gateway_name="IB"
+            )
+
+            data.append(vt_bar)
+
+        return data
+
 
     def subscribe_bar(self, req: SubscribeRequest, interval: Interval, barCount: int):
         """
         Subscribe tick data update.
         """
-        if not self.status:
-            return
+        # if not self.status:
+        #     return
+
+        # if req.vt_symbol in self.reqId2contract.values():
+        #     return
+
+        for reqId, subcription in self.reqId2subscription.items():
+            if subcription == (req.vt_symbol, interval):
+                print(f'{req.vt_symbol}-{interval}已在订阅中')
+                return self.result_queues[reqId]
 
         if req.exchange not in EXCHANGE_VT2IB:
             self.gateway.write_log(f"不支持的交易所{req.exchange}")
             return
 
-        ib_contract = Contract()
-        ib_contract.conId = str(req.symbol)
-        ib_contract.exchange = EXCHANGE_VT2IB[req.exchange]
-
-        # Get contract data from TWS.
-        self.reqid += 1
-        self.client.reqContractDetails(self.reqid, ib_contract)
+        ib_contract = ibcontract.Contract()
+        ib_contract.conId = int(req.symbol)
+        ib_contract.exchange = req.exchange.value
 
         # Subscribe tick data and create tick object buffer.
-        self.reqid += 1
 
         barSizeSetting = {Interval.MINUTE: '1 min',
                           Interval.HOUR: '1 hour',
@@ -192,14 +249,41 @@ class IBDataClient(EClient, EWrapper):
         if barSizeSetting == '1 week':
             raise ValueError('1 week barSizeSetting is not support!')
 
-        total_seconds = {Interval.MINUTE: 60 * barCount,
-                          Interval.HOUR: 60 * 60 * barCount,
-                          Interval.DAILY: 60 * 60 * 24 * barCount,
-                          Interval.WEEKLY: 60 * 60 * 24 * 7 * barCount,
+        delta = {Interval.MINUTE: dt.timedelta(minutes=1) * barCount,
+                          Interval.HOUR: dt.timedelta(hours=1) * barCount,
+                          Interval.DAILY: dt.timedelta(days=1) * barCount,
+                          Interval.WEEKLY: dt.timedelta(weeks=1) * barCount,
                           }[interval]
 
+        durationStr = self.timedelta2durationStr(delta)
+
+        endDateTime = ''  # yyyymmdd HH:mm:ss  '' mean up to date
+
+        reqId = self.startReq()
+        self.reqId2subscription[reqId] = (req.vt_symbol, interval)
+        self.reqHistoricalData(reqId, ib_contract, endDateTime, durationStr, barSizeSetting, 'TRADES', False, 1,
+                               True, None)
+
+    def unsubscribe_bar(self, req: SubscribeRequest, interval: Interval):
+        for reqId, subcription in self.reqId2subscription:
+            if subcription == (req.vt_symbol, interval):
+                self.cancelHistoricalData(reqId)
+                self.reqId2subscription.pop(reqId)
+                return
+            else:
+                print(f'{req.vt_symbol}-{interval}不在订阅列表中')
+
+    def subscription2reqId(self, subcription):
+        for k, v in self.reqId2subscription.items():
+            if subcription == v:
+                return k
+
+
+    @staticmethod
+    def timedelta2durationStr(delta: dt.timedelta):
+        total_seconds = delta.total_seconds()
         if total_seconds <= 86400:
-            durationStr = f'{int(delta.total_seconds() //60 * 60  + 60)} S'
+            durationStr = f'{int(total_seconds //60 * 60  + 60)} S'
         elif total_seconds <= 86400 * 30:
             durationStr = f'{int(min(delta.days + 1, 30))} D'
         elif total_seconds < 86400 * 30 * 6:
@@ -207,10 +291,6 @@ class IBDataClient(EClient, EWrapper):
         else:
             durationStr = f'{int(delta.days // (30 * 12) + 1)} Y'
 
-        endDateTime = ''  # yyyymmdd HH:mm:ss  '' mean up to date
-
-        self.reqHistoricalData(self.reqId, ib_contract, '', durationStr, barSizeSetting, 'TRADES', False, 1,
-                               False, None)
-
+        return durationStr
 
 ibdata_client = IBDataClient()

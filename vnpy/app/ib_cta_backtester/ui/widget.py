@@ -18,6 +18,7 @@ from vnpy.trader.ui import QtCore, QtWidgets, QtGui
 from vnpy.event import Event, EventEngine
 from vnpy.trader.object import TradeData
 
+
 class BacktesterManager(QtWidgets.QWidget):
     """"""
 
@@ -298,8 +299,6 @@ class BacktesterManager(QtWidgets.QWidget):
             result_df
         )
         dialog.exec_()
-
-
 
     def show(self):
         """"""
@@ -754,7 +753,7 @@ class DailyResultMonitor(QtWidgets.QDialog):
     """
 
     def __init__(
-        self, daily_df: pd.DataFrame):
+            self, daily_df: pd.DataFrame):
         """"""
         super().__init__()
 
@@ -784,12 +783,12 @@ class DailyResultMonitor(QtWidgets.QDialog):
         table.setVerticalHeaderLabels(str(i) for i in self.daily_df.index)
         table.verticalHeader().setVisible(True)
 
-
         for r, (d, s) in enumerate(self.daily_df.iterrows()):
             for c, (t, v) in enumerate(s.items()):
                 if t == 'trades':
                     cell = QtWidgets.QTableWidgetItem("交易明细")
-                    cell.setFlags(QtCore.Qt.ItemIsSelectable|QtCore.Qt.ItemIsEnabled)
+                    cell.setFlags(QtCore.Qt.ItemIsSelectable |
+                                  QtCore.Qt.ItemIsEnabled)
                 else:
                     cell = QtWidgets.QTableWidgetItem(str(v))
                     cell.setFlags(QtCore.Qt.ItemIsEnabled)
@@ -811,7 +810,7 @@ class TradeResultMonitor(QtWidgets.QDialog):
     """
 
     def __init__(
-        self, trade_values: List[TradeData]):
+            self, trade_values: List[TradeData]):
         """"""
         super().__init__()
 
@@ -830,7 +829,6 @@ class TradeResultMonitor(QtWidgets.QDialog):
         table.setHorizontalHeaderLabels(fields.keys())
         table.verticalHeader().setVisible(False)
 
-
         for r, tradeData in enumerate(self.trade_values):
             for c, k in enumerate(fields.keys()):
                 v = getattr(tradeData, k)
@@ -841,7 +839,6 @@ class TradeResultMonitor(QtWidgets.QDialog):
 
                 cell.setTextAlignment(QtCore.Qt.AlignCenter)
                 table.setItem(r, c, cell)
-
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(table)
