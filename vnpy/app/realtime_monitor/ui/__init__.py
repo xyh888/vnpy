@@ -5,3 +5,4 @@
 @author:Hadrianl
 
 """
+from .widget import KLineWidget

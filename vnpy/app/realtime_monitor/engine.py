@@ -23,18 +23,18 @@ from queue import Empty
 # from .template import AlgoTemplate
 
 
-APP_NAME = "MarketDataVisulization"
+APP_NAME = "Visulization"
 
 EVENT_MKDATA_LOG = "eMKDataLog"
-EVENT_ALGO_SETTING = "eAlgoSetting"
-EVENT_ALGO_VARIABLES = "eAlgoVariables"
+EVENT_VISULIZE_HiSTORICAL_DATA = "eVisulizeHistoricalData"
+EVENT_VISULIZE_REALTIME_DATA = "eVisulizeRealtimeData"
 EVENT_ALGO_PARAMETERS = "eAlgoParameters"
 EVENT_BAR_UPDATE = 'eBarUpdate'
 
 
-class MarketDataEngine(BaseEngine):
+class VisulizationEngine(BaseEngine):
     """"""
-    setting_filename = "market_data_visulization_setting.json"
+    setting_filename = "visulization_setting.json"
 
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """Constructor"""
@@ -164,4 +164,5 @@ class MarketDataEngine(BaseEngine):
         log = LogData(msg=msg, gateway_name='IB')
         event.data = log
         self.event_engine.put(event)
+
 

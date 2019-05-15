@@ -2,6 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 from datetime import datetime, timedelta
 import pandas as pd
+import datetime as dt
 from typing import List
 from enum import Enum
 
@@ -17,6 +18,7 @@ from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import QtCore, QtWidgets, QtGui
 from vnpy.event import Event, EventEngine
 from vnpy.trader.object import TradeData
+from vnpy.trader.object import SubscribeRequest
 
 
 class BacktesterManager(QtWidgets.QWidget):
@@ -81,9 +83,9 @@ class BacktesterManager(QtWidgets.QWidget):
         )
 
         self.rate_line = QtWidgets.QLineEdit("0.000025")
-        self.slippage_line = QtWidgets.QLineEdit("0.2")
-        self.size_line = QtWidgets.QLineEdit("300")
-        self.pricetick_line = QtWidgets.QLineEdit("0.2")
+        self.slippage_line = QtWidgets.QLineEdit("1")
+        self.size_line = QtWidgets.QLineEdit("50")
+        self.pricetick_line = QtWidgets.QLineEdit("1")
         self.capital_line = QtWidgets.QLineEdit("1000000")
 
         backtesting_button = QtWidgets.QPushButton("开始回测")
@@ -296,7 +298,8 @@ class BacktesterManager(QtWidgets.QWidget):
         """"""
         result_df = self.backtester_engine.get_result_df()
         dialog = DailyResultMonitor(
-            result_df
+            result_df,
+            self
         )
         dialog.exec_()
 
@@ -753,9 +756,11 @@ class DailyResultMonitor(QtWidgets.QDialog):
     """
 
     def __init__(
-            self, daily_df: pd.DataFrame):
+            self, daily_df: pd.DataFrame, parent=None):
         """"""
-        super().__init__()
+
+        super().__init__(parent)
+
 
         self.daily_df = daily_df
 
@@ -763,10 +768,11 @@ class DailyResultMonitor(QtWidgets.QDialog):
 
     def show_trade_data(self, item):
         r = item.row()
-        trades = self.daily_df.iloc[r]['trades']
-        if len(trades) > 0:
+        daily_df = self.daily_df.iloc[r]
+        if len(daily_df['trades']) > 0:
             dialog = TradeResultMonitor(
-                trades
+                daily_df,
+                self.parent()
             )
             dialog.exec_()
 
@@ -810,16 +816,16 @@ class TradeResultMonitor(QtWidgets.QDialog):
     """
 
     def __init__(
-            self, trade_values: List[TradeData]):
+            self, daily_trade_result: pd.Series, parent=None):
         """"""
-        super().__init__()
-
-        self.trade_values = trade_values
+        super().__init__(parent)
+        self.daily_trade_result = daily_trade_result
+        self.trade_values = daily_trade_result['trades']
         self.init_ui()
 
     def init_ui(self):
         """"""
-        self.setWindowTitle("交易明细")
+        self.setWindowTitle(f"{self.daily_trade_result.name}交易明细")
         self.resize(1100, 500)
 
         table = QtWidgets.QTableWidget()
@@ -840,7 +846,56 @@ class TradeResultMonitor(QtWidgets.QDialog):
                 cell.setTextAlignment(QtCore.Qt.AlignCenter)
                 table.setItem(r, c, cell)
 
+        table.doubleClicked.connect(self.visulize)
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(table)
+
+        self.setLayout(vbox)
+
+    def visulize(self, QModelIndex):
+        from vnpy.trader.database.database_mongo import DbBarData
+
+        symbol = self.trade_values[QModelIndex.row()].symbol
+        exchange = self.trade_values[QModelIndex.row()].exchange
+        trade_date: dt.date = self.daily_trade_result.name
+        start = dt.datetime(trade_date.year, trade_date.month, trade_date.day)
+        end = dt.datetime(trade_date.year, trade_date.month, trade_date.day, 23, 59)
+
+        cur = DbBarData.objects(datetime__gte=start, datetime__lte=end, interval=Interval.MINUTE.value, symbol=symbol, exchange=exchange.value)
+        marketData_df = pd.DataFrame([[o.datetime, o.open_price, o.high_price, o.low_price, o.close_price, o.volume] for o in cur], columns=['datetime', 'open', 'high', 'low', 'close', 'volume']).set_index('datetime', drop=False)
+        marketData_df['openInterest'] = 0
+
+        tradeData_df = pd.DataFrame([[f'{trade_date} {t.time}', t.direction.value, t.price, t.volume] for t in self.trade_values if t.symbol == symbol], columns=['datetime', 'direction', 'price', 'volume']).set_index('datetime', drop=False)
+
+
+        chart = TradeResultVisulizationChart(marketData_df, tradeData_df, title=f"{self.daily_trade_result.name}交易行情")
+        chart.exec_()
+
+class TradeResultVisulizationChart(QtWidgets.QDialog):
+    """
+    For viewing trade result.
+    """
+
+    def __init__(
+            self, marketData: pd.DataFrame, tradeData: pd.DataFrame, title='', parent=None):
+        """"""
+        super().__init__(parent)
+        self.marketData = marketData
+        self.tradeData = tradeData
+        self.title = title
+        self.init_ui()
+
+    def init_ui(self):
+        """"""
+        from vnpy.app.realtime_monitor.ui import KLineWidget
+        self.setWindowTitle(self.title)
+        self.resize(1300, 500)
+        vbox = QtWidgets.QVBoxLayout()
+        klineWidget = KLineWidget(getattr(self.parent(), 'main_engine', None), getattr(self.parent(), 'event_engine', None))
+
+        klineWidget.loadData(self.marketData, self.tradeData)
+        klineWidget.refreshAll()
+
+        vbox.addWidget(klineWidget)
 
         self.setLayout(vbox)
