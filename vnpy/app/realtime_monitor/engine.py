@@ -20,7 +20,6 @@ import datetime as dt
 from dateutil import parser
 from threading import Thread
 from queue import Empty
-# from .template import AlgoTemplate
 
 
 APP_NAME = "Visulization"
@@ -29,6 +28,8 @@ EVENT_MKDATA_LOG = "eMKDataLog"
 EVENT_VISULIZE_HiSTORICAL_DATA = "eVisulizeHistoricalData"
 EVENT_VISULIZE_REALTIME_DATA = "eVisulizeRealtimeData"
 EVENT_ALGO_PARAMETERS = "eAlgoParameters"
+EVENT_SUBSCRIBE_BAR = 'eSubscribeBar'
+EVENT_UNSUBSCRIBE_BAR = 'eUnsubscribeBar'
 EVENT_BAR_UPDATE = 'eBarUpdate'
 
 
@@ -64,20 +65,12 @@ class VisulizationEngine(BaseEngine):
 
     def register_event(self):
         """"""
-        self.event_engine.register(EVENT_TICK, self.process_tick_event)
+        # self.event_engine.register(EVENT_TICK, self.process_tick_event)
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
-        self.event_engine.register(EVENT_BAR_UPDATE, self.process_bar_event)
-
-    def process_tick_event(self, event: Event):
-        """"""
-        tick = event.data
-        # print(tick)
-        if self.first:
-            self.subscribe('359142357.HKFE', Interval.MINUTE)
-            self.first = False
-
-        #TODO: update tick
+        self.event_engine.register(EVENT_SUBSCRIBE_BAR, self.subscribe)
+        self.event_engine.register(EVENT_UNSUBSCRIBE_BAR, self.unsubscribe)
+        # self.event_engine.register(EVENT_BAR_UPDATE, self.process_bar_event)
 
 
     def process_trade_event(self, event: Event):
@@ -97,31 +90,37 @@ class VisulizationEngine(BaseEngine):
         print(bar)
         # TODO:updatebar the order
 
-    def subscribe(self,req: SubscribeRequest, interval: Interval, barCount=300):
+    def subscribe(self, event: Event):
         """"""
+        req, interval, barCount = event.data
         contract = self.main_engine.get_contract(req.vt_symbol)
         if not contract:
             self.write_log(f'订阅行情失败，找不到合约：{vt_symbol}')
             return
 
         ibdata_client.subscribe_bar(req, interval, barCount)
-        self.realtimebar_threads[(req.vt_symbol, interval)] = Thread(target=self.handle_bar_update, args=(req, interval))
+        self.realtimebar_threads[(req.vt_symbol, interval)] = Thread(target=self.handle_bar_update, args=(req, interval), daemon=True)
         self.realtimebar_threads[(req.vt_symbol, interval)].start()
 
-    def unsubscribe(self, req: SubscribeRequest, interval: Interval):
+    def unsubscribe(self, event: Event):
+        req, interval = event.data
         ibdata_client.unsubscribe_bar(req, interval)
 
     def handle_bar_update(self, req: SubscribeRequest, interval: Interval): #FIXME:not an efficient way
         reqId = ibdata_client.subscription2reqId((req.vt_symbol, interval))
         q = ibdata_client.result_queues[reqId]
         # event_type = EVENT_BAR_UPDATE + req.vt_symbol + '.' + interval.value
-        event_type = EVENT_BAR_UPDATE
+        event_type = EVENT_BAR_UPDATE + req.vt_symbol + interval.value
+        print('handle_bar_update', event_type)
         # self.event_engine.register(event_type)
         while ibdata_client.isConnected():
             try:
                 ib_bar = q.get(timeout=60)
             except Empty:
-                continue
+                if ibdata_client.reqId2subscription.get(reqId) is None:
+                    break
+                else:
+                    continue
 
             if isinstance(ib_bar, int):
                 break

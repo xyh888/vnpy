@@ -9,7 +9,7 @@ THANKS FOR th github project https://github.com/moonnejs/uiKLine
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import SubscribeRequest
-from vnpy.trader.object import Interval
+from vnpy.trader.object import Interval, Exchange
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -22,6 +22,7 @@ from functools import partial
 from collections import deque
 from .baseQtItems import KeyWraper, CandlestickItem, MyStringAxis, Crosshair, CustomViewBox
 
+EVENT_BAR_UPDATE = 'eBarUpdate'
 
 class KLineWidget(KeyWraper):
     """用于显示价格走势图"""
@@ -78,12 +79,19 @@ class KLineWidget(KeyWraper):
         self.subSigColor = {}
         self.subSigPlots = {}
 
+        self.vt_symbol = ''
+        self.symbol = ''
+        self.exchange = ''
+        self.interval = ''
+        self.bar_event_type = ''
+
+
         # 初始化完成
         self.initCompleted = False
 
         # 调用函数
         self.initUi()
-        self.register_event()
+        # self.register_event()
 
     # ----------------------------------------------------------------------
     #  初始化相关
@@ -111,7 +119,23 @@ class KLineWidget(KeyWraper):
         # 注册十字光标
         self.crosshair = Crosshair(self.pw, self)
         # 设置界面
+        self.exchange_combo = QComboBox()
+        self.exchange_combo.addItems([exchange.value for exchange in Exchange])
+
+        self.symbol_line = QLineEdit("359142357")
+        self.symbol_line.returnPressed.connect(self.subscribe)
+
+        self.interval_combo = QComboBox()
+        for inteval in Interval:
+            self.interval_combo.addItem(inteval.value)
+
+        form = QFormLayout()
+        form.addRow("交易所", self.exchange_combo)
+        form.addRow("代码", self.symbol_line)
+        form.addRow("K线周期", self.interval_combo)
+
         self.vb = QVBoxLayout()
+        self.vb.addLayout(form)
         self.vb.addWidget(self.pw)
         self.setLayout(self.vb)
         self.resize(1300, 400)
@@ -120,8 +144,51 @@ class KLineWidget(KeyWraper):
 
         # ----------------------------------------------------------------------
 
-    def register_event(self):
-        ...
+    # def register_event(self):
+    #     if self.event_engine is not None:
+    #         self.event_engine.register(EVENT_BAR_UPDATE, self.process_bar_event)
+
+    def subscribe(self):
+        old_symbol = self.symbol
+        self.symbol = str(self.symbol_line.text())
+        if not self.symbol:
+            return
+
+        old_exchange = self.exchange
+        old_interval = self.interval
+        self.exchange = str(self.exchange_combo.currentText())
+        self.interval = str(self.interval_combo.currentText())
+        vt_symbol = f"{self.symbol}.{self.exchange}"
+
+        if vt_symbol == self.vt_symbol:
+            return
+        self.vt_symbol = vt_symbol
+
+        contract = self.main_engine.get_contract(vt_symbol)
+        old_bar_event_type = self.bar_event_type
+        self.bar_event_type = EVENT_BAR_UPDATE + vt_symbol + self.interval
+
+        if contract:
+            barCount = 300
+            self.clearData()
+            from ..engine import EVENT_SUBSCRIBE_BAR, EVENT_UNSUBSCRIBE_BAR
+            if old_bar_event_type:
+                print(f'unsubcribe-{old_bar_event_type}')
+                self.event_engine.unregister(old_bar_event_type, self.process_bar_event)
+                self.event_engine.put(event=Event(EVENT_UNSUBSCRIBE_BAR, (SubscribeRequest(symbol=old_symbol, exchange=Exchange(old_exchange)), Interval(old_interval))))
+
+            print(f'subcribe-{self.bar_event_type}')
+            self.event_engine.put(event=Event(EVENT_SUBSCRIBE_BAR, (SubscribeRequest(symbol=self.symbol, exchange=Exchange(self.exchange)), Interval(self.interval), barCount)))
+            self.event_engine.register(self.bar_event_type, self.process_bar_event)
+
+
+
+    def process_bar_event(self, event: Event):
+        bar = event.data
+        print(bar)
+        self.onBar(bar)
+        if len(self.datas) >=300:
+            self.refreshAll(False, True)
 
     def makePI(self, name):
         """生成PlotItem对象"""
@@ -458,7 +525,7 @@ class KLineWidget(KeyWraper):
         self.listSig = []
         self.listTrade = []
         self.sigData = {}
-        self.datas = None
+        self.datas = []
 
     # ----------------------------------------------------------------------
     def clearSig(self, main=True):
@@ -489,9 +556,10 @@ class KLineWidget(KeyWraper):
         # 是否需要更新K线
         newBar = False if len(self.datas) > 0 and bar.datetime == self.datas[-1].datetime else True
         nrecords = len(self.datas) if newBar else len(self.datas) - 1
-        bar.openInterest = np.random.randint(0,
-                                             3) if bar.openInterest == np.inf or bar.openInterest == -np.inf else bar.openInterest
-        recordVol = (nrecords, abs(bar.volume), 0, 0, abs(bar.volume)) if bar.close < bar.open else (
+        # bar.openInterest = np.random.randint(0,
+        #                                      3) if bar.openInterest == np.inf or bar.openInterest == -np.inf else bar.openInterest
+        openInterest = 0
+        recordVol = (nrecords, abs(bar.volume), 0, 0, abs(bar.volume)) if bar.close_price < bar.open_price else (
         nrecords, 0, abs(bar.volume), 0, abs(bar.volume))
 
         if newBar and any(self.datas):
@@ -503,22 +571,22 @@ class KLineWidget(KeyWraper):
             self.listHigh.pop()
             self.listOpenInterest.pop()
         if any(self.datas):
-            self.datas[-1] = (bar.datetime, bar.open, bar.close, bar.low, bar.high, bar.volume, bar.openInterest)
-            self.listBar[-1] = (nrecords, bar.open, bar.close, bar.low, bar.high)
+            self.datas[-1] = (bar.datetime, bar.open_price, bar.close_price, bar.low_price, bar.high_price, bar.volume, openInterest)
+            self.listBar[-1] = (nrecords, bar.open_price, bar.close_price, bar.low_price, bar.high_price)
             self.listVol[-1] = recordVol
         else:
             self.datas = np.rec.array(
-                [(bar.datetime, bar.open, bar.close, bar.low, bar.high, bar.volume, bar.openInterest)], \
+                [(bar.datetime, bar.open_price, bar.close_price, bar.low_price, bar.high_price, bar.volume, openInterest)], \
                 names=('datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest'))
-            self.listBar = np.rec.array([(nrecords, bar.open, bar.close, bar.low, bar.high)], \
+            self.listBar = np.rec.array([(nrecords, bar.open_price, bar.close_price, bar.low_price, bar.high_price)], \
                                         names=('time_int', 'open', 'close', 'low', 'high'))
             self.listVol = np.rec.array([recordVol], names=('time_int', 'open', 'close', 'low', 'high'))
             self.resignData(self.datas)
 
         self.axisTime.update_xdict({nrecords: bar.datetime})
-        self.listLow.append(bar.low)
-        self.listHigh.append(bar.high)
-        self.listOpenInterest.append(bar.openInterest)
+        self.listLow.append(bar.low_price)
+        self.listHigh.append(bar.high_price)
+        self.listOpenInterest.append(openInterest)
         self.resignData(self.datas)
         return newBar
 

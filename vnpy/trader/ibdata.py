@@ -27,6 +27,8 @@ from vnpy.gateway.ib.ib_gateway import EXCHANGE_IB2VT, EXCHANGE_VT2IB
 import re
 from vnpy.trader.setting import get_settings
 
+
+
 class IBDataClient(EClient, EWrapper):
     """
     Client for querying history data from Interactive Brokers.
@@ -38,7 +40,7 @@ class IBDataClient(EClient, EWrapper):
         settings.update(load_json(f'connect_IB.json'))
         self.host = settings['TWS地址']
         self.port = settings['TWS端口']
-        self.clientId = 15
+        self.clientId = 20
 
 
         self.inited = False
@@ -261,6 +263,7 @@ class IBDataClient(EClient, EWrapper):
 
         reqId = self.startReq()
         self.reqId2subscription[reqId] = (req.vt_symbol, interval)
+        print(reqId, ib_contract, endDateTime, durationStr, barSizeSetting)
         self.reqHistoricalData(reqId, ib_contract, endDateTime, durationStr, barSizeSetting, 'TRADES', False, 1,
                                True, None)
 
