@@ -10,7 +10,7 @@ from ibapi import comm
 from ibapi.client import EClient
 from ibapi.common import MAX_MSG_LEN, NO_VALID_ID, OrderId, TickAttrib, TickerId
 from ibapi.contract import Contract, ContractDetails
-from ibapi.execution import Execution
+from ibapi.execution import Execution, ExecutionFilter
 from ibapi.order import Order
 from ibapi.order_state import OrderState
 from ibapi.ticktype import TickType
@@ -515,6 +515,13 @@ class IbApi(EWrapper):
         self.thread.start()
 
         self.client.reqCurrentTime()
+        if self.clientid == 0:
+            self.client.reqAutoOpenOrders(True)
+
+        self.reqid += 1
+        executionFilter = ExecutionFilter()
+        self.client.reqExecutions(self.reqid, executionFilter)
+        self.client.reqOpenOrders()
 
     def close(self):
         """

@@ -40,7 +40,7 @@ class IBDataClient(EClient, EWrapper):
         settings.update(load_json(f'connect_IB.json'))
         self.host = settings['TWS地址']
         self.port = settings['TWS端口']
-        self.clientId = 20
+        self.clientId = 19
 
 
         self.inited = False
@@ -268,7 +268,7 @@ class IBDataClient(EClient, EWrapper):
                                True, None)
 
     def unsubscribe_bar(self, req: SubscribeRequest, interval: Interval):
-        for reqId, subcription in self.reqId2subscription:
+        for reqId, subcription in self.reqId2subscription.items():
             if subcription == (req.vt_symbol, interval):
                 self.cancelHistoricalData(reqId)
                 self.reqId2subscription.pop(reqId)

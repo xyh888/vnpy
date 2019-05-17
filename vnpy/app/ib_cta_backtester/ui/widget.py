@@ -779,7 +779,7 @@ class DailyResultMonitor(QtWidgets.QDialog):
     def init_ui(self):
         """"""
         self.setWindowTitle("回测每日明细")
-        self.resize(1100, 500)
+        self.resize(1300, 800)
 
         table = QtWidgets.QTableWidget()
 

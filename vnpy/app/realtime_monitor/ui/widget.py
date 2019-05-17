@@ -21,6 +21,7 @@ import pyqtgraph as pg
 from functools import partial
 from collections import deque
 from .baseQtItems import KeyWraper, CandlestickItem, MyStringAxis, Crosshair, CustomViewBox
+from vnpy.trader.event import EVENT_TRADE
 
 EVENT_BAR_UPDATE = 'eBarUpdate'
 
@@ -41,6 +42,8 @@ class KLineWidget(KeyWraper):
 
     # 是否完成了历史数据的读取
     initCompleted = False
+    signal_bar_update = QtCore.pyqtSignal(Event)
+    signal_trade_update = QtCore.pyqtSignal(Event)
 
     # ----------------------------------------------------------------------
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
@@ -65,6 +68,8 @@ class KLineWidget(KeyWraper):
         self.listLow = []
         self.listSig = []
         self.listOpenInterest = []
+        self.listTrade = []
+        self.listOrder = []
         self.arrows = []
 
         # 所有K线上信号图
@@ -138,9 +143,12 @@ class KLineWidget(KeyWraper):
         self.vb.addLayout(form)
         self.vb.addWidget(self.pw)
         self.setLayout(self.vb)
-        self.resize(1300, 400)
+        self.resize(1300, 700)
+        self.signal_bar_update.connect(self.process_bar_event)
+        self.signal_trade_update.connect(self.process_trade_event)
         # 初始化完成
         self.initCompleted = True
+
 
         # ----------------------------------------------------------------------
 
@@ -174,21 +182,46 @@ class KLineWidget(KeyWraper):
             from ..engine import EVENT_SUBSCRIBE_BAR, EVENT_UNSUBSCRIBE_BAR
             if old_bar_event_type:
                 print(f'unsubcribe-{old_bar_event_type}')
-                self.event_engine.unregister(old_bar_event_type, self.process_bar_event)
+                self.event_engine.unregister(old_bar_event_type, self.signal_bar_update.emit)
+                self.event_engine.unregister(EVENT_TRADE, self.signal_trade_update.emit)
                 self.event_engine.put(event=Event(EVENT_UNSUBSCRIBE_BAR, (SubscribeRequest(symbol=old_symbol, exchange=Exchange(old_exchange)), Interval(old_interval))))
 
             print(f'subcribe-{self.bar_event_type}')
             self.event_engine.put(event=Event(EVENT_SUBSCRIBE_BAR, (SubscribeRequest(symbol=self.symbol, exchange=Exchange(self.exchange)), Interval(self.interval), barCount)))
-            self.event_engine.register(self.bar_event_type, self.process_bar_event)
-
+            self.event_engine.register(self.bar_event_type, self.signal_bar_update.emit)
+            self.event_engine.register(EVENT_TRADE, self.signal_trade_update.emit)
 
 
     def process_bar_event(self, event: Event):
         bar = event.data
-        print(bar)
         self.onBar(bar)
         if len(self.datas) >=300:
-            self.refreshAll(False, True)
+            self.refreshAll(False, False)
+
+    def process_trade_event(self, event: Event):
+        trade = event.data
+        if trade.vt_symbol != self.vt_symbol:
+            return
+
+        time_int = len(self.datas) - 1
+        if any(self.listTrade):
+            self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
+            self.listTrade[-1] = time_int, trade.direction.value, trade.price, trade.volume
+        else:
+            self.listTrade = np.rec.array([(time_int, trade.direction.value, trade.price, trade.volume)], \
+                     names=('time_int', 'direction', 'price', 'volume'))
+        self.refreshAll()
+
+    # def process_order_event(self, event: Event):
+    #     order = event.data
+    #
+    #     if any(self.listOrder):
+    #         self.order.resize(len(self.listTrade) + 1, refcheck=0)
+    #         self.listTrade[-1] = time_int, order.direction.value, order.price, order.volume, order.status.value
+    #     else:
+    #         self.listOrder = np.rec.array([(time_int, order.direction.value, order.price, order.volume, order.status.value)], \
+    #                  names=('time_int', 'direction', 'price', 'volume', 'status'))
+    #     self.refreshAll()
 
     def makePI(self, name):
         """生成PlotItem对象"""
@@ -566,14 +599,17 @@ class KLineWidget(KeyWraper):
             self.datas.resize(nrecords + 1, refcheck=0)
             self.listBar.resize(nrecords + 1, refcheck=0)
             self.listVol.resize(nrecords + 1, refcheck=0)
+            self.listSig.append(0)
         elif any(self.datas):
             self.listLow.pop()
             self.listHigh.pop()
             self.listOpenInterest.pop()
+            self.listSig.pop()
         if any(self.datas):
             self.datas[-1] = (bar.datetime, bar.open_price, bar.close_price, bar.low_price, bar.high_price, bar.volume, openInterest)
             self.listBar[-1] = (nrecords, bar.open_price, bar.close_price, bar.low_price, bar.high_price)
             self.listVol[-1] = recordVol
+            self.listSig[-1] = 0
         else:
             self.datas = np.rec.array(
                 [(bar.datetime, bar.open_price, bar.close_price, bar.low_price, bar.high_price, bar.volume, openInterest)], \
@@ -581,12 +617,14 @@ class KLineWidget(KeyWraper):
             self.listBar = np.rec.array([(nrecords, bar.open_price, bar.close_price, bar.low_price, bar.high_price)], \
                                         names=('time_int', 'open', 'close', 'low', 'high'))
             self.listVol = np.rec.array([recordVol], names=('time_int', 'open', 'close', 'low', 'high'))
+            self.listSig = [0]
             self.resignData(self.datas)
 
         self.axisTime.update_xdict({nrecords: bar.datetime})
         self.listLow.append(bar.low_price)
         self.listHigh.append(bar.high_price)
         self.listOpenInterest.append(openInterest)
+        self.listSig.append(0)
         self.resignData(self.datas)
         return newBar
 

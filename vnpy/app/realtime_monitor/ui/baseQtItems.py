@@ -420,6 +420,7 @@ class Crosshair(QtCore.QObject):
             preClosePrice = lastdata['close']
             tradePrice = abs(self.master.listSig[xAxis])
         except Exception as e:
+            print(e)
             return
 
         if (isinstance(tickDatetime, dt.datetime)):
