@@ -49,7 +49,7 @@ class KLineWidget(KeyWraper):
     signal_order_update = QtCore.pyqtSignal(Event)
 
     # ----------------------------------------------------------------------
-    def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
+    def __init__(self, main_engine: MainEngine, event_engine: EventEngine, isRealTime=True):
         """Constructor"""
         super().__init__()
 
@@ -101,13 +101,13 @@ class KLineWidget(KeyWraper):
         self.initCompleted = False
 
         # 调用函数
-        self.initUi()
+        self.initUi(isRealTime)
         # self.register_event()
 
     # ----------------------------------------------------------------------
     #  初始化相关
     # ----------------------------------------------------------------------
-    def initUi(self):
+    def initUi(self, isRealTime):
         """初始化界面"""
         self.setWindowTitle('数据可视化')
         # 主图
@@ -130,29 +130,41 @@ class KLineWidget(KeyWraper):
         # 注册十字光标
         self.crosshair = Crosshair(self.pw, self)
         # 设置界面
-        self.exchange_combo = QComboBox()
-        self.exchange_combo.addItems([exchange.value for exchange in Exchange])
-
-        self.symbol_line = QLineEdit("359142357")
-        self.symbol_line.returnPressed.connect(self.subscribe)
-
-        self.interval_combo = QComboBox()
-        for inteval in Interval:
-            self.interval_combo.addItem(inteval.value)
-
-        self.barCount_line = QLineEdit("300")
-        pIntvalidator = QIntValidator(self)
-        pIntvalidator.setRange(30, 1000)
-        self.barCount_line.setValidator(pIntvalidator)
-
-        form = QFormLayout()
-        form.addRow("交易所", self.exchange_combo)
-        form.addRow("代码", self.symbol_line)
-        form.addRow("K线周期", self.interval_combo)
-        form.addRow("BarCount", self.barCount_line)
-
         self.vb = QVBoxLayout()
-        self.vb.addLayout(form)
+
+        if isRealTime:
+            self.exchange_combo = QComboBox()
+            self.exchange_combo.addItems([exchange.value for exchange in Exchange])
+            self.exchange_combo.setCurrentIndex(15)  # default: HKFE
+
+            self.symbol_line = QLineEdit("359142357")
+            self.symbol_line.returnPressed.connect(self.subscribe)
+
+            self.interval_combo = QComboBox()
+            for inteval in Interval:
+                self.interval_combo.addItem(inteval.value)
+
+            self.barCount_line = QLineEdit("300")
+            pIntvalidator = QIntValidator(self)
+            pIntvalidator.setRange(30, 1000)
+            self.barCount_line.setValidator(pIntvalidator)
+
+            form = QFormLayout()
+            form.addRow("交易所", self.exchange_combo)
+            form.addRow("代码", self.symbol_line)
+            form.addRow("K线周期", self.interval_combo)
+            form.addRow("BarCount", self.barCount_line)
+
+            for c in self.main_engine.get_all_contracts():
+                now = dt.datetime.now()
+                if (c.expiry.year, c.expiry.month) == (now.year, now.month):
+                    self.symbol_line.setText(str(c.symbol))
+                    self.exchange_combo.setCurrentText(c.exchange.value)
+                    self.subscribe()
+                    break
+
+            self.vb.addLayout(form)
+
         self.vb.addWidget(self.pw)
         self.setLayout(self.vb)
         self.resize(1300, 700)

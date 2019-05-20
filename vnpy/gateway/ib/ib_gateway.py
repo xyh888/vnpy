@@ -3,6 +3,7 @@ Please install ibapi from Interactive Brokers github page.
 """
 from copy import copy
 from datetime import datetime
+from dateutil import parser
 from queue import Empty
 from threading import Thread
 
@@ -464,6 +465,7 @@ class IbApi(EWrapper):
             size=ib_size,
             pricetick=contractDetails.minTick,
             net_position=True,
+            expiry=parser.parse(contractDetails.contract.lastTradeDateOrContractMonth),
             gateway_name=self.gateway_name,
         )
 

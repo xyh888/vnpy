@@ -889,12 +889,13 @@ class TradeResultVisulizationChart(QtWidgets.QDialog):
         """"""
         from vnpy.app.realtime_monitor.ui import KLineWidget
         self.setWindowTitle(self.title)
-        self.resize(1300, 500)
+        self.resize(1300, 800)
         vbox = QtWidgets.QVBoxLayout()
-        klineWidget = KLineWidget(getattr(self.parent(), 'main_engine', None), getattr(self.parent(), 'event_engine', None))
+        klineWidget = KLineWidget(getattr(self.parent(), 'main_engine', None), getattr(self.parent(), 'event_engine', None), isRealTime=False)
 
         klineWidget.loadData(self.marketData, self.tradeData)
         klineWidget.refreshAll()
+        klineWidget.plotTradeMark()
 
         vbox.addWidget(klineWidget)
 
