@@ -10,6 +10,7 @@ from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import SubscribeRequest
 from vnpy.trader.object import Interval, Exchange
+from vnpy.trader.constant import Status, Direction
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -21,7 +22,8 @@ import pyqtgraph as pg
 from functools import partial
 from collections import deque
 from .baseQtItems import KeyWraper, CandlestickItem, MyStringAxis, Crosshair, CustomViewBox
-from vnpy.trader.event import EVENT_TRADE
+from vnpy.trader.event import EVENT_TRADE, EVENT_ORDER
+from dateutil import parser
 
 EVENT_BAR_UPDATE = 'eBarUpdate'
 
@@ -44,6 +46,7 @@ class KLineWidget(KeyWraper):
     initCompleted = False
     signal_bar_update = QtCore.pyqtSignal(Event)
     signal_trade_update = QtCore.pyqtSignal(Event)
+    signal_order_update = QtCore.pyqtSignal(Event)
 
     # ----------------------------------------------------------------------
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
@@ -69,8 +72,10 @@ class KLineWidget(KeyWraper):
         self.listSig = []
         self.listOpenInterest = []
         self.listTrade = []
-        self.listOrder = []
+        self.dictOrder = {}
         self.arrows = []
+        self.tradeArrows = []
+        self.orderLines = []
 
         # 所有K线上信号图
         self.allColor = deque(['blue', 'green', 'yellow', 'white'])
@@ -88,6 +93,7 @@ class KLineWidget(KeyWraper):
         self.symbol = ''
         self.exchange = ''
         self.interval = ''
+        self.barCount = 300
         self.bar_event_type = ''
 
 
@@ -134,10 +140,16 @@ class KLineWidget(KeyWraper):
         for inteval in Interval:
             self.interval_combo.addItem(inteval.value)
 
+        self.barCount_line = QLineEdit("300")
+        pIntvalidator = QIntValidator(self)
+        pIntvalidator.setRange(30, 1000)
+        self.barCount_line.setValidator(pIntvalidator)
+
         form = QFormLayout()
         form.addRow("交易所", self.exchange_combo)
         form.addRow("代码", self.symbol_line)
         form.addRow("K线周期", self.interval_combo)
+        form.addRow("BarCount", self.barCount_line)
 
         self.vb = QVBoxLayout()
         self.vb.addLayout(form)
@@ -146,6 +158,7 @@ class KLineWidget(KeyWraper):
         self.resize(1300, 700)
         self.signal_bar_update.connect(self.process_bar_event)
         self.signal_trade_update.connect(self.process_trade_event)
+        self.signal_order_update.connect(self.process_order_event)
         # 初始化完成
         self.initCompleted = True
 
@@ -177,51 +190,91 @@ class KLineWidget(KeyWraper):
         self.bar_event_type = EVENT_BAR_UPDATE + vt_symbol + self.interval
 
         if contract:
-            barCount = 300
+            self.barCount = int(self.barCount_line.text())
             self.clearData()
             from ..engine import EVENT_SUBSCRIBE_BAR, EVENT_UNSUBSCRIBE_BAR
             if old_bar_event_type:
-                print(f'unsubcribe-{old_bar_event_type}')
+                # print(f'unsubcribe-{old_bar_event_type}')
                 self.event_engine.unregister(old_bar_event_type, self.signal_bar_update.emit)
                 self.event_engine.unregister(EVENT_TRADE, self.signal_trade_update.emit)
+                self.event_engine.unregister(EVENT_ORDER, self.signal_order_update.emit)
                 self.event_engine.put(event=Event(EVENT_UNSUBSCRIBE_BAR, (SubscribeRequest(symbol=old_symbol, exchange=Exchange(old_exchange)), Interval(old_interval))))
 
-            print(f'subcribe-{self.bar_event_type}')
-            self.event_engine.put(event=Event(EVENT_SUBSCRIBE_BAR, (SubscribeRequest(symbol=self.symbol, exchange=Exchange(self.exchange)), Interval(self.interval), barCount)))
+            # print(f'subcribe-{self.bar_event_type}')
+            self.event_engine.put(event=Event(EVENT_SUBSCRIBE_BAR, (SubscribeRequest(symbol=self.symbol, exchange=Exchange(self.exchange)), Interval(self.interval), self.barCount)))
             self.event_engine.register(self.bar_event_type, self.signal_bar_update.emit)
             self.event_engine.register(EVENT_TRADE, self.signal_trade_update.emit)
+            self.event_engine.register(EVENT_ORDER, self.signal_order_update.emit)
 
+    def init_listTrade(self):
+        all_trades = self.main_engine.get_all_trades()
+        trades = [t for t in all_trades if t.vt_symbol == self.vt_symbol]
+
+        for t in trades:
+            # t_time = parser.parse(t.time)
+            t_time = t.time
+            for i, _time in enumerate(self.axisTime.x_strings):
+                timedelta = (t_time - _time).total_seconds()
+                if 0 <= timedelta < 60:
+                    time_int = i
+                    if any(self.listTrade):
+                        self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
+                        self.listTrade[-1] = (time_int, t.direction.value, t.price, t.volume)
+                    else:
+                        self.listTrade = np.rec.array([(time_int, t.direction.value, t.price, t.volume)], \
+                                                      names=('time_int', 'direction', 'price', 'volume'))
+
+    def init_dictOrder(self):
+        all_orders = self.main_engine.get_all_orders()
+        for o in all_orders:
+            if o.vt_symbol == self.vt_symbol:
+                self.dictOrder[o.vt_orderid] = o
 
     def process_bar_event(self, event: Event):
         bar = event.data
         self.onBar(bar)
-        if len(self.datas) >=300:
-            self.refreshAll(False, False)
+        if len(self.datas) >= self.barCount:
+
+            self.index = len(self.datas)
+            vRange = self.pwKL.getViewBox().viewRange()
+            xmax = max(0, int(vRange[0][1]))
+            if xmax + 10 >= self.index or xmax <= self.countK:
+                self.plotAll(False, 0, len(self.datas))
+                self.updateAll()
+                self.crosshair.signal.emit((None, None))
+
+        elif len(self.datas) >= self.barCount - 1:
+            self.init_listTrade()
+            self.init_dictOrder()
+            self.plotTradeMark()
+            self.plotOrderMarkLine()
 
     def process_trade_event(self, event: Event):
         trade = event.data
         if trade.vt_symbol != self.vt_symbol:
             return
 
-        time_int = len(self.datas) - 1
+        timedelta = (trade.datetime - self.datas[-1].datetime).total_seconds()
+        time_int = len(self.datas) - (timedelta // 60 + 1)
         if any(self.listTrade):
             self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
-            self.listTrade[-1] = time_int, trade.direction.value, trade.price, trade.volume
+            self.listTrade[-1] = (time_int, trade.direction.value, trade.price, trade.volume)
         else:
             self.listTrade = np.rec.array([(time_int, trade.direction.value, trade.price, trade.volume)], \
                      names=('time_int', 'direction', 'price', 'volume'))
-        self.refreshAll()
 
-    # def process_order_event(self, event: Event):
-    #     order = event.data
-    #
-    #     if any(self.listOrder):
-    #         self.order.resize(len(self.listTrade) + 1, refcheck=0)
-    #         self.listTrade[-1] = time_int, order.direction.value, order.price, order.volume, order.status.value
-    #     else:
-    #         self.listOrder = np.rec.array([(time_int, order.direction.value, order.price, order.volume, order.status.value)], \
-    #                  names=('time_int', 'direction', 'price', 'volume', 'status'))
-    #     self.refreshAll()
+        self.plotTradeMark()
+        self.refreshAll(True, False)
+
+    def process_order_event(self, event: Event):
+        order = event.data
+        if order.vt_symbol != self.vt_symbol:
+            return
+
+        self.dictOrder[order.vt_orderid] = order
+
+        self.plotOrderMarkLine()
+        self.refreshAll(True, False)
 
     def makePI(self, name):
         """生成PlotItem对象"""
@@ -259,6 +312,7 @@ class KLineWidget(KeyWraper):
         self.pwKL = self.makePI('_'.join([self.windowId, 'PlotKL']))
         self.candle = CandlestickItem(self.listBar)
         self.pwKL.addItem(self.candle)
+        self.pwKL.addItem(self.candle.tickLine)
         self.pwKL.setMinimumHeight(350)
         self.pwKL.setXLink('_'.join([self.windowId, 'PlotOI']))
         self.pwKL.hideAxis('bottom')
@@ -297,6 +351,7 @@ class KLineWidget(KeyWraper):
             self.curveOI.setData(np.append(self.listOpenInterest[xmin:xmax], 0), pen='w', name="OpenInterest")
 
     # ----------------------------------------------------------------------
+
     def addSig(self, sig, main=True):
         """新增信号图"""
         if main:
@@ -334,6 +389,36 @@ class KLineWidget(KeyWraper):
                 self.subSigPlots[sig].setData(np.append(datas[sig], 0), pen=self.subSigColor[sig][0], name=sig)
 
     # ----------------------------------------------------------------------
+    def plotTradeMark(self):
+        """显示交易信号"""
+        for arrow in self.tradeArrows:
+            self.pwKL.removeItem(arrow)
+
+        for t in self.listTrade:
+            if t.direction == '多':
+                arrow = pg.ArrowItem(pos=(t.time_int, t.price), angle=90, brush=(255, 0, 0))
+                self.pwKL.addItem(arrow)
+                self.tradeArrows.append(arrow)
+            elif t.direction == '空':
+                arrow = pg.ArrowItem(pos=(t.time_int, t.price), angle=-90, brush=(0, 255, 0))
+                self.pwKL.addItem(arrow)
+                self.tradeArrows.append(arrow)
+
+    def plotOrderMarkLine(self):
+        for line in self.orderLines:
+            self.pwKL.removeItem(line)
+
+        for o_id, o in self.dictOrder.items():
+            if o.status not in [Status.ALLTRADED, Status.REJECTED, Status.CANCELLED]:
+                if o.direction == Direction.LONG:
+                    line = pg.InfiniteLine(angle=0, movable=False, brush='b')
+                    self.pwKL.addItem(line)
+                    self.orderLines.append(line)
+                elif o.direction == Direction.SHORT:
+                    line = pg.InfiniteLine(angle=0, movable=False, brush='y')
+                    self.pwKL.addItem(line)
+                    self.orderLines.append(line)
+
     def plotMark(self):
         """显示开平仓信号"""
         # 检查是否有数据
@@ -354,16 +439,6 @@ class KLineWidget(KeyWraper):
                 arrow = pg.ArrowItem(pos=(i, self.datas[i]['high']), angle=-90, brush=(0, 255, 0))
             self.pwKL.addItem(arrow)
             self.arrows.append(arrow)
-
-        for t in self.listTrade:
-            if t.direction == '多':
-                arrow = pg.ArrowItem(pos=(t.time_int, t.price), angle=90, brush=(255, 0, 0))
-                self.pwKL.addItem(arrow)
-                self.arrows.append(arrow)
-            elif t.direction == '空':
-                arrow = pg.ArrowItem(pos=(t.time_int, t.price), angle=-90, brush=(0, 255, 0))
-                self.pwKL.addItem(arrow)
-                self.arrows.append(arrow)
 
     # ----------------------------------------------------------------------
     def updateAll(self):
@@ -417,7 +492,7 @@ class KLineWidget(KeyWraper):
         """
         刷新三个子图的现实范围
         """
-        datas = self.datas
+        # datas = self.datas
         minutes = int(self.countK / 2)
         xmin = max(0, self.index - minutes)
         try:
@@ -505,6 +580,14 @@ class KLineWidget(KeyWraper):
                 self.refresh()
             self.crosshair.signal.emit((x, y))
 
+    def wheelEvent(self, event):
+        """滚轮缩放"""
+        angle = event.angleDelta()
+        if angle.y() < 0:
+            self.onDown()
+        elif angle.y() > 0:
+            self.onUp()
+
     # ----------------------------------------------------------------------
     # 界面回调相关
     # ----------------------------------------------------------------------
@@ -556,9 +639,13 @@ class KLineWidget(KeyWraper):
         self.listHigh = []
         self.listOpenInterest = []
         self.listSig = []
-        self.listTrade = []
         self.sigData = {}
         self.datas = []
+
+        self.listTrade = []
+        self.dictOrder = {}
+        self.tradeArrows = []
+        self.orderLines = []
 
     # ----------------------------------------------------------------------
     def clearSig(self, main=True):

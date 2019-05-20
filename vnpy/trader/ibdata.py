@@ -44,7 +44,7 @@ class IBDataClient(EClient, EWrapper):
 
 
         self.inited = False
-        self.thread = Thread(target=self.run)
+        self.thread = Thread(target=self.run, daemon=True)
         self.result_queues: Dict[int, Queue] = {}
         self.reqId2subscription = {}
         self.reqId = 1

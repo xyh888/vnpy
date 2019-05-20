@@ -215,10 +215,14 @@ class CandlestickItem(pg.GraphicsObject):
         self.rPen = pg.mkPen(color=(255, 60, 60, 255), width=w * 2)
         self.rBrush = pg.mkBrush((255, 60, 60, 255))
         self.rBrush.setStyle(Qt.NoBrush)
+        self.wPen = pg.mkPen(color='w', width=w * 2)
+        self.tickLine = pg.InfiniteLine(angle=0, movable=False, pen=self.wPen)
+        self.tickText = pg.InfLineLabel(self.tickLine)
         # 刷新K线
         self.generatePicture(self.data)
 
         # 画K线
+
 
     # ----------------------------------------------------------------------
     def generatePicture(self, data=None, redraw=False):
@@ -244,6 +248,9 @@ class CandlestickItem(pg.GraphicsObject):
                     if open0 > close0 else (rPen, rBrush, open0, close0)
                 p.setPen(pen)
                 p.setBrush(brush)
+                self.tickLine.setPen(pen)
+                self.tickLine.setPos(close0)
+                self.tickText.setText(str(close0), color='w')
                 # 画K线方块和上下影线
                 if open0 == close0:
                     p.drawLine(QtCore.QPointF(t - w, open0), QtCore.QPointF(t + w, close0))
@@ -272,6 +279,7 @@ class CandlestickItem(pg.GraphicsObject):
             self.picture = self.createPic(xmin, xmax)
             self.picture.play(painter)
         elif not self.picture is None:
+            self.picture = self.createPic(xmin, xmax)
             self.picture.play(painter)
 
     # 缓存图片
