@@ -75,7 +75,7 @@ class KLineWidget(KeyWraper):
         self.dictOrder = {}
         self.arrows = []
         self.tradeArrows = []
-        self.orderLines = []
+        self.orderLines = {}
 
         # 所有K线上信号图
         self.allColor = deque(['blue', 'green', 'yellow', 'white'])
@@ -417,19 +417,36 @@ class KLineWidget(KeyWraper):
                 self.tradeArrows.append(arrow)
 
     def plotOrderMarkLine(self):
-        for line in self.orderLines:
-            self.pwKL.removeItem(line)
-
         for o_id, o in self.dictOrder.items():
-            if o.status not in [Status.ALLTRADED, Status.REJECTED, Status.CANCELLED]:
+            if o.vt_orderid in self.orderLines:
+                if o.status in [Status.ALLTRADED, Status.REJECTED, Status.CANCELLED]:
+                    self.pwKL.removeItem(self.orderLines[o.vt_orderid])
+                else:
+                    self.orderLines[o.vt_orderid].setPos(o.price)
+                    if o.direction == Direction.LONG:
+                        self.orderLines[o.vt_orderid].label.setFormat(f'BUY-{o.price}-{o.volume - o.traded}')
+                    elif o.direction == Direction.SHORT:
+                        self.orderLines[o.vt_orderid].label.setFormat(f'SELL-{o.price}-{o.volume - o.traded}')
+            else:
+                if o.status in [Status.ALLTRADED, Status.REJECTED, Status.CANCELLED]:
+                    continue
+
                 if o.direction == Direction.LONG:
-                    line = pg.InfiniteLine(angle=0, movable=False, brush='b')
+                    pen = pg.mkPen(color='b', width=min(o.volume - o.traded, 10) / 2)
+                    hoverPen = pg.mkPen(color='r', width=min(o.volume - o.traded, 10))
+                    line = pg.InfiniteLine(pos=o.price, angle=0, movable=False,
+                                           pen=pen, hoverPen=hoverPen,
+                                           label=f'BUY-{o.price}-{o.volume - o.traded}', labelOpts={'color':'r'})
                     self.pwKL.addItem(line)
-                    self.orderLines.append(line)
+                    self.orderLines[o.vt_orderid] = line
                 elif o.direction == Direction.SHORT:
-                    line = pg.InfiniteLine(angle=0, movable=False, brush='y')
+                    pen = pg.mkPen(color='y', width=min(o.volume - o.traded, 10)/2)
+                    hoverPen = pg.mkPen(color='g', width=min(o.volume - o.traded, 10))
+                    line = pg.InfiniteLine(pos=o.price, angle=0, movable=False,
+                                           pen=pen, hoverPen=hoverPen,
+                                           label=f'SELL-{o.price}-{o.volume - o.traded}', labelOpts={'color':'g'})
                     self.pwKL.addItem(line)
-                    self.orderLines.append(line)
+                    self.orderLines[o.vt_orderid] = line
 
     def plotMark(self):
         """显示开平仓信号"""
@@ -657,7 +674,7 @@ class KLineWidget(KeyWraper):
         self.listTrade = []
         self.dictOrder = {}
         self.tradeArrows = []
-        self.orderLines = []
+        self.orderLines = {}
 
     # ----------------------------------------------------------------------
     def clearSig(self, main=True):
