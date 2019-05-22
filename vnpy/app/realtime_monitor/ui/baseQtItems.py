@@ -274,14 +274,17 @@ class CandlestickItem(pg.GraphicsObject):
     def paint(self, painter, opt, w):
         rect = opt.exposedRect
         xmin, xmax = (max(0, int(rect.left())), min(int(len(self.pictures)), int(rect.right())))
-        if not self.rect == (rect.left(), rect.right()) or self.picture is None:
+        if self.rect != (rect.left(), rect.right()) or self.picture is None:
             self.rect = (rect.left(), rect.right())
-            self.picture = self.createPic(xmin, xmax)
+            self.picture = self.createPic(xmin, xmax - 1)
             self.picture.play(painter)
+            if self.pictures:
+                self.pictures[-1].play(painter)
         elif not self.picture is None:
-            self.picture = self.createPic(xmin, xmax)
+            # self.picture = self.createPic(xmin, xmax)
             self.picture.play(painter)
-
+            if self.pictures:
+                self.pictures[-1].play(painter)
     # 缓存图片
     # ----------------------------------------------------------------------
     def createPic(self, xmin, xmax):
@@ -428,7 +431,6 @@ class Crosshair(QtCore.QObject):
             preClosePrice = lastdata['close']
             tradePrice = abs(self.master.listSig[xAxis])
         except Exception as e:
-            print(e)
             return
 
         if (isinstance(tickDatetime, dt.datetime)):

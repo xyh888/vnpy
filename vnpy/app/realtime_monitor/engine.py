@@ -95,7 +95,7 @@ class VisulizationEngine(BaseEngine):
         req, interval, barCount = event.data
         contract = self.main_engine.get_contract(req.vt_symbol)
         if not contract:
-            self.write_log(f'订阅行情失败，找不到合约：{vt_symbol}')
+            self.write_log(f'订阅行情失败，找不到合约：{req.vt_symbol}')
             return
 
         ibdata_client.subscribe_bar(req, interval, barCount)
@@ -111,7 +111,7 @@ class VisulizationEngine(BaseEngine):
         q = ibdata_client.result_queues[reqId]
         # event_type = EVENT_BAR_UPDATE + req.vt_symbol + '.' + interval.value
         event_type = EVENT_BAR_UPDATE + req.vt_symbol + interval.value
-        print('handle_bar_update', event_type)
+        # print('handle_bar_update', event_type)
         # self.event_engine.register(event_type)
         while ibdata_client.isConnected():
             try:

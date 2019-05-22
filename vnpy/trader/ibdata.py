@@ -137,7 +137,6 @@ class IBDataClient(EClient, EWrapper):
         try:
             while True:
                 contractDetail = symbol_queue.get(timeout=30)
-                print(contractDetail)
                 if isinstance(contract, int):
                     break
 

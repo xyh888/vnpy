@@ -266,7 +266,7 @@ class KLineWidget(KeyWraper):
         if trade.vt_symbol != self.vt_symbol:
             return
 
-        timedelta = (trade.datetime - self.datas[-1].datetime).total_seconds()
+        timedelta = (trade.time - self.datas[-1].datetime).total_seconds()
         time_int = len(self.datas) - (timedelta // 60 + 1)
         if any(self.listTrade):
             self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
@@ -445,6 +445,7 @@ class KLineWidget(KeyWraper):
                     line = pg.InfiniteLine(pos=o.price, angle=0, movable=False,
                                            pen=pen, hoverPen=hoverPen,
                                            label=f'SELL-{o.price}-{o.volume - o.traded}', labelOpts={'color':'g'})
+                    pg.BarGraphItem
                     self.pwKL.addItem(line)
                     self.orderLines[o.vt_orderid] = line
 
