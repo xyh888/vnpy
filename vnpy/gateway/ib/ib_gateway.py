@@ -390,6 +390,10 @@ class IbApi(EWrapper):
         name = ACCOUNTFIELD_IB2VT[key]
         setattr(account, name, float(val))
 
+    def accountUpdateMulti(self, reqId:int, account:str, modelCode:str,
+                            key:str, value:str, currency:str):
+        self.updateAccountValue(key, value, currency, account)
+
     def updatePortfolio(  # pylint: disable=invalid-name
         self,
         contract: Contract,
@@ -502,8 +506,15 @@ class IbApi(EWrapper):
         """
         super(IbApi, self).managedAccounts(accountsList)
 
-        for account_code in accountsList.split(","):
-            self.client.reqAccountUpdates(True, account_code)
+        accountsList = accountsList.split(",")
+        if accountsList:
+            self.client.reqAccountUpdates(True, accountsList[0])
+
+        for account_code in accountsList:
+            if account_code:
+                self.reqid += 1
+                self.client.reqAccountUpdatesMulti(self.reqid, account_code, '', False)
+                # self.client.reqAccountUpdates(True, account_code)
 
     def connect(self, host: str, port: int, clientid: int):
         """
