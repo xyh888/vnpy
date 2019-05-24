@@ -99,7 +99,7 @@ class VisulizationEngine(BaseEngine):
             return
 
         ibdata_client.subscribe_bar(req, interval, barCount)
-        self.realtimebar_threads[(req.vt_symbol, interval)] = Thread(target=self.handle_bar_update, args=(req, interval), daemon=True)
+        self.realtimebar_threads[(req.vt_symbol, interval)] = Thread(target=self.handle_bar_update, args=(req, interval))
         self.realtimebar_threads[(req.vt_symbol, interval)].start()
 
     def unsubscribe(self, event: Event):
@@ -163,5 +163,13 @@ class VisulizationEngine(BaseEngine):
         log = LogData(msg=msg, gateway_name='IB')
         event.data = log
         self.event_engine.put(event)
+
+    def close(self):
+        ibdata_client.deinit()
+        for subscription in self.realtimebar_threads:
+            reqId = ibdata_client.subscription2reqId(subscription)
+            q = ibdata_client.result_queues[reqId]
+            q.put_nowait(0)
+
 
 

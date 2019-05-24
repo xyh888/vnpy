@@ -44,7 +44,7 @@ class IBDataClient(EClient, EWrapper):
 
 
         self.inited = False
-        self.thread = Thread(target=self.run, daemon=True)
+        self.thread = Thread(target=self.run)
         self.result_queues: Dict[int, Queue] = {}
         self.reqId2subscription = {}
         self.reqId = 1
@@ -63,8 +63,15 @@ class IBDataClient(EClient, EWrapper):
         self.inited = True
         return True
 
-    def __del__(self):
+    def deinit(self):
+        if not self.inited:
+            return True
+
         self.disconnect()
+        self.thread.join()
+
+        self.inited = False
+        return True
 
     # def error(self, reqId, errorCode:int, errorString:str):
     #     print(reqId, errorCode, errorString)

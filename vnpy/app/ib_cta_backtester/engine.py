@@ -363,3 +363,6 @@ class BacktesterEngine(BaseEngine):
         self.thread.start()
 
         return True
+
+    def close(self):
+        ibdata_client.deinit()
