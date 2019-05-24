@@ -65,30 +65,8 @@ class VisulizationEngine(BaseEngine):
 
     def register_event(self):
         """"""
-        # self.event_engine.register(EVENT_TICK, self.process_tick_event)
-        self.event_engine.register(EVENT_ORDER, self.process_order_event)
-        self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_SUBSCRIBE_BAR, self.subscribe)
         self.event_engine.register(EVENT_UNSUBSCRIBE_BAR, self.unsubscribe)
-        # self.event_engine.register(EVENT_BAR_UPDATE, self.process_bar_event)
-
-
-    def process_trade_event(self, event: Event):
-        """"""
-        trade = event.data
-
-        #TODO: mark the trade
-
-    def process_order_event(self, event: Event):
-        """"""
-        order = event.data
-
-        #TODO:mark the order
-
-    def process_bar_event(self, event: Event):
-        bar = event.data
-        print(bar)
-        # TODO:updatebar the order
 
     def subscribe(self, event: Event):
         """"""
@@ -109,10 +87,7 @@ class VisulizationEngine(BaseEngine):
     def handle_bar_update(self, req: SubscribeRequest, interval: Interval): #FIXME:not an efficient way
         reqId = ibdata_client.subscription2reqId((req.vt_symbol, interval))
         q = ibdata_client.result_queues[reqId]
-        # event_type = EVENT_BAR_UPDATE + req.vt_symbol + '.' + interval.value
         event_type = EVENT_BAR_UPDATE + req.vt_symbol + interval.value
-        # print('handle_bar_update', event_type)
-        # self.event_engine.register(event_type)
         while ibdata_client.isConnected():
             try:
                 ib_bar = q.get(timeout=60)
