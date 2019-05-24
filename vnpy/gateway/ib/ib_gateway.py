@@ -118,6 +118,8 @@ class IbGateway(BaseGateway):
         "账户ID": ""
     }
 
+    exchanges = list(EXCHANGE_VT2IB.keys())
+
     def __init__(self, event_engine):
         """"""
         super(IbGateway, self).__init__(event_engine, "IB")
