@@ -114,7 +114,8 @@ class IbGateway(BaseGateway):
     default_setting = {
         "TWS地址": "127.0.0.1",
         "TWS端口": 7497,
-        "客户号": 1
+        "客户号": 1,
+        "账户ID": ""
     }
 
     def __init__(self, event_engine):
@@ -130,6 +131,7 @@ class IbGateway(BaseGateway):
         host = setting["TWS地址"]
         port = setting["TWS端口"]
         clientid = setting["客户号"]
+        self.api.major_account = setting["账户ID"]
 
         self.api.connect(host, port, clientid)
 
@@ -185,6 +187,7 @@ class IbApi(EWrapper):
         self.reqid = 0
         self.orderid = 0
         self.clientid = 0
+        self.major_account = ""
         self.ticks = {}
         self.orders = {}
         self.accounts = {}
@@ -506,15 +509,25 @@ class IbApi(EWrapper):
         """
         super(IbApi, self).managedAccounts(accountsList)
 
-        accountsList = accountsList.split(",")
-        if accountsList:
-            self.client.reqAccountUpdates(True, accountsList[0])
+        accountsList = [acc for acc in accountsList.split(",") if acc]
+
+        self.gateway.write_log(f'存在多个账户{accountsList}')
+
+        if self.major_account:
+            if self.major_account not in accountsList:
+                self.gateway.write_log(f'不存在账户{self.major_account}')
+                self.major_account = accountsList[0]
+            self.gateway.write_log(f'使用{self.major_account}作为主账户')
+        else:
+            self.major_account = accountsList[0]
+            self.gateway.write_log(f'未提供主账户，默认使用第一个账户{self.major_account}作为主账户')
+
+        self.client.reqAccountUpdates(True, self.major_account)
 
         for account_code in accountsList:
             if account_code:
                 self.reqid += 1
                 self.client.reqAccountUpdatesMulti(self.reqid, account_code, '', False)
-                # self.client.reqAccountUpdates(True, account_code)
 
     def connect(self, host: str, port: int, clientid: int):
         """
