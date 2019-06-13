@@ -9,6 +9,8 @@ from vnpy.app.ib_cta_strategy import (
     ArrayManager,
 )
 
+import datetime as dt
+
 
 class DoubleMaStrategy(CtaTemplate):
     author = "用Python的交易员"
@@ -41,10 +43,12 @@ class DoubleMaStrategy(CtaTemplate):
         self.write_log("策略初始化")
         self.load_bar(1, callback=self.init_bar)
 
-    def init_bar(self, bar):
-        self.bg.bar = bar
-        am = self.am
-        am.update_bar(bar)
+    def init_bar(self, bar: BarData):
+        if bar.datetime.replace(second=0) >= dt.datetime.now().replace(second=0) - dt.timedelta(minutes=1):
+            self.bg.bar = bar
+        else:
+            am = self.am
+            am.update_bar(bar)
 
     def on_start(self):
         """
