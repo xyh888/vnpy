@@ -40,7 +40,7 @@ class IBDataClient(EClient, EWrapper):
         settings.update(load_json(f'connect_IB.json'))
         self.host = settings['TWS地址']
         self.port = settings['TWS端口']
-        self.clientId = settings['客户号'] + 35
+        self.clientId = settings['客户号'] + 30
 
 
         self.inited = False

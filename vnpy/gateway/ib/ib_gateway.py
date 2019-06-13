@@ -75,6 +75,7 @@ PRODUCT_VT2IB = {
     Product.OPTION: "OPT",
     Product.FUTURES: "FUT",
 }
+
 PRODUCT_IB2VT = {v: k for k, v in PRODUCT_VT2IB.items()}
 
 OPTION_VT2IB = {OptionType.CALL: "CALL", OptionType.PUT: "PUT"}
