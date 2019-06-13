@@ -11,7 +11,7 @@ import datetime as dt
 from typing import List, Dict
 
 from vnpy.trader.constant import Exchange, Interval
-from vnpy.trader.object import BarData
+from vnpy.trader.object import BarData, HistoryRequest
 from vnpy.gateway.ib import IbGateway
 from vnpy.trader.utility import load_json
 from ibapi.client import EClient
@@ -175,6 +175,18 @@ class IBDataClient(EClient, EWrapper):
         finally:
             return data
 
+    def query_history(self, req: HistoryRequest):
+        """
+        Query history bar data from RQData.
+        """
+        symbol = req.symbol
+        exchange = req.exchange
+        interval = req.interval
+        start = req.start
+        end = req.end
+
+        return self.query_bar(symbol, exchange, interval, start, end)
+
     def _query_bar_from_KRData(
         self,
         symbol: str,
@@ -291,7 +303,7 @@ class IBDataClient(EClient, EWrapper):
     @staticmethod
     def timedelta2durationStr(delta: dt.timedelta):
         total_seconds = delta.total_seconds()
-        if total_seconds <= 86400:
+        if total_seconds < 86400:
             durationStr = f'{int(total_seconds //60 * 60  + 60)} S'
         elif total_seconds <= 86400 * 30:
             durationStr = f'{int(min(delta.days + 1, 30))} D'
