@@ -340,7 +340,7 @@ class IbApi(EWrapper):
 
         orderid = str(orderId)
         order = self.orders.get(orderid, None)
-        order.status = STATUS_IB2VT[status]
+        order.status = STATUS_IB2VT[status]  # FIXME: PendingCancel is not included
         order.traded = filled
 
         self.gateway.on_order(copy(order))
