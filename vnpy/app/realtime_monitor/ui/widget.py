@@ -754,7 +754,7 @@ class KLineWidget(KeyWraper):
         # 设置中心点时间
         # 绑定数据，更新横坐标映射，更新Y轴自适应函数，更新十字光标映射
         datas['time_int'] = np.array(range(len(datas.index)))
-        trades['time_int'] = datas[datas.index.isin(trades.index)]['time_int']
+        trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
         self.datas = datas[['open', 'close', 'low', 'high', 'volume', 'openInterest']].to_records()
         self.axisTime.xdict = {}
         xdict = dict(enumerate(datas.index.tolist()))
