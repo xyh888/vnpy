@@ -105,11 +105,11 @@ class CtaEngine(BaseEngine):
     def init_engine(self):
         """
         """
-        self.init_ibdata()
         self.load_strategy_class()
         self.load_strategy_setting()
         self.load_strategy_data()
         self.register_event()
+        self.init_ibdata()
         self.write_log("CTA策略引擎初始化成功")
 
     def close(self):

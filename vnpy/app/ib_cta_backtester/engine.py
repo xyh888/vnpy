@@ -12,7 +12,7 @@ from vnpy.trader.utility import extract_vt_symbol
 # from vnpy.trader.rqdata import rqdata_client
 from vnpy.trader.ibdata import ibdata_client
 from vnpy.trader.database import database_manager
-from vnpy.app.cta_strategy import (
+from vnpy.app.ib_cta_strategy import (
     CtaTemplate,
     BacktestingEngine,
     OptimizationSetting
@@ -57,7 +57,6 @@ class BacktesterEngine(BaseEngine):
 
         self.write_log("策略文件加载完成")
 
-        self.init_ibdata()
 
     def init_ibdata(self):
         """
@@ -78,9 +77,9 @@ class BacktesterEngine(BaseEngine):
         Load strategy class from source code.
         """
         app_path = Path(__file__).parent.parent
-        path1 = app_path.joinpath("cta_strategy", "strategies")
+        path1 = app_path.joinpath("ib_cta_strategy", "strategies")
         self.load_strategy_class_from_folder(
-            path1, "vnpy.app.cta_strategy.strategies")
+            path1, "vnpy.app.ib_cta_strategy.strategies")
 
         path2 = Path.cwd().joinpath("strategies")
         self.load_strategy_class_from_folder(path2, "strategies")
@@ -323,6 +322,8 @@ class BacktesterEngine(BaseEngine):
         """
         Query bar data from RQData.
         """
+        self.init_ibdata()
+
         self.write_log(f"{vt_symbol}-{interval}开始下载历史数据")
 
         symbol, exchange = extract_vt_symbol(vt_symbol)

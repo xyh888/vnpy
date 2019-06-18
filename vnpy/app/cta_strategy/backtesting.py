@@ -306,8 +306,8 @@ class BacktestingEngine:
         """"""
         self.output("开始计算策略统计指标")
 
-
-        df = df if df is not None else self.daily_df
+        if not df:
+            df = self.daily_df
 
         if df is None:
             # Set all statistics to 0 if no trade.

@@ -514,7 +514,8 @@ class IbApi(EWrapper):
 
         accountsList = [acc for acc in accountsList.split(",") if acc]
 
-        self.gateway.write_log(f'存在多个账户{accountsList}')
+        if len(accountsList) > 1:
+            self.gateway.write_log(f'存在多个账户{accountsList}')
 
         if self.major_account:
             if self.major_account not in accountsList:
