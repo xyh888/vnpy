@@ -12,6 +12,8 @@ import talib
 from .object import BarData, TickData
 from .constant import Exchange, Interval
 
+import datetime
+
 
 def extract_vt_symbol(vt_symbol: str):
     """
@@ -223,6 +225,7 @@ class BarGenerator:
         if self.interval == Interval.MINUTE:
             # x-minute bar
             if not (bar.datetime.minute + 1) % self.window:
+                self.window_bar.datetime = bar.datetime - datetime.timedelta(minutes=14)
                 finished = True
         elif self.interval == Interval.HOUR:
             if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
