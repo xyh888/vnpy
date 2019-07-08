@@ -451,8 +451,7 @@ class BacktestingEngine:
 
     def show_chart(self, df: DataFrame = None):
         """"""
-        if not df:
-            df = self.daily_df
+        df = df if df is not None else self.daily_df
         
         if df is None:
             return
