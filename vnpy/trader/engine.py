@@ -52,7 +52,7 @@ class MainEngine:
         self.apps = {}
         self.exchanges = []
 
-        os.chdir(TRADER_DIR)    # Change working directory
+        # os.chdir(TRADER_DIR)    # Change working directory
         self.init_engines()     # Initialize function engines
 
     def add_engine(self, engine_class: Any):
