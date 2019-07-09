@@ -748,6 +748,7 @@ class CtaEngine(BaseEngine):
             path1, "vnpy.app.ib_cta_strategy.strategies")
 
         path2 = Path.cwd().joinpath("strategies")
+
         self.load_strategy_class_from_folder(path2, "strategies")
 
     def load_strategy_class_from_folder(self, path: Path, module_name: str = ""):
