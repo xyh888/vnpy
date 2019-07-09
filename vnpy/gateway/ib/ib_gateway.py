@@ -705,8 +705,9 @@ class IbApi(EWrapper):
             end_str = ""
 
         delta = end - req.start
-        days = min(delta.days, 180)     # IB only provides 6-month data
-        duration = f"{days} D"
+        # days = min(delta.days, 180)     # IB only provides 6-month data
+        # duration = f"{days} D"
+        duration = self.timedelta2durationStr(delta)
         bar_size = INTERVAL_VT2IB[req.interval]
 
         if req.exchange == Exchange.IDEALPRO:
@@ -721,7 +722,7 @@ class IbApi(EWrapper):
             duration,
             bar_size,
             bar_type,
-            1,
+            False,
             1,
             False,
             []
@@ -736,6 +737,20 @@ class IbApi(EWrapper):
         self.history_req = None
 
         return history
+
+    @staticmethod
+    def timedelta2durationStr(delta):
+        total_seconds = delta.total_seconds()
+        if total_seconds < 86400:
+            durationStr = f'{int(total_seconds //60 * 60  + 60)} S'
+        elif total_seconds < 86400 * 30:
+            durationStr = f'{int(min(delta.days + 1, 30))} D'
+        elif total_seconds < 86400 * 30 * 6:
+            durationStr = f'{int(min(delta.days // 30 + 1, 6))} M'
+        else:
+            durationStr = f'{int(delta.days // (30 * 12) + 1)} Y'
+
+        return durationStr
 
 
 class IbClient(EClient):
