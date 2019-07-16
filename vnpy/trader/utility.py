@@ -233,7 +233,7 @@ class BarGenerator:
         if self.interval == Interval.MINUTE:
             # x-minute bar
             if not (bar.datetime.minute + 1) % self.window:
-                self.window_bar.datetime = bar.datetime - datetime.timedelta(minutes=14)
+                self.window_bar.datetime = bar.datetime - datetime.timedelta(minutes=self.window - 1)
                 finished = True
         elif self.interval == Interval.HOUR:
             if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
