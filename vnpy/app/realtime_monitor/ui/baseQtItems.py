@@ -446,7 +446,7 @@ class Crosshair(QtCore.QObject):
         elif isinstance(tickDatetime, np.datetime64):
             tickDatetime = tickDatetime.astype(dt.datetime)
             # _dt = dt.datetime.fromtimestamp(tickDatetime/1000000000) - dt.timedelta(hours=8)
-            _dt = tickDatetime - dt.timedelta(hours=8)
+            _dt = tickDatetime
             datetimeText = _dt.strftime('%Y-%m-%d %H:%M:%S')
             dateText = _dt.strftime('%Y-%m-%d')
             timeText = _dt.strftime('%H:%M:%S')
