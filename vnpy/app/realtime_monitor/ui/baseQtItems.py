@@ -18,6 +18,8 @@ from PyQt5.QtWidgets import *
 from PyQt5 import QtGui, QtCore
 from pyqtgraph.Point import Point
 
+DEFAULT_MA = [5, 10, 30, 60]
+
 ########################################################################
 # 键盘鼠标功能
 ########################################################################
@@ -337,12 +339,14 @@ class Crosshair(QtCore.QObject):
         self.__textSig = pg.TextItem('lastSigInfo', anchor=(1, 0))
         self.__textSubSig = pg.TextItem('lastSubSigInfo', anchor=(1, 0))
         self.__textVolume = pg.TextItem('lastBarVolume', anchor=(1, 0))
+        self.__textMAs = pg.TextItem('lastBarMA', anchor=(1, 0))
 
         self.__textDate.setZValue(2)
         self.__textInfo.setZValue(2)
         self.__textSig.setZValue(2)
         self.__textSubSig.setZValue(2)
         self.__textVolume.setZValue(2)
+        self.__textMAs.setZValue(2)
         self.__textInfo.border = pg.mkPen(color=(230, 255, 0, 255), width=1.2)
 
         for i in range(3):
@@ -357,6 +361,7 @@ class Crosshair(QtCore.QObject):
 
         self.views[0].addItem(self.__textInfo, ignoreBounds=True)
         self.views[0].addItem(self.__textSig, ignoreBounds=True)
+        self.views[0].addItem(self.__textMAs, ignoreBounds=True)
         self.views[1].addItem(self.__textVolume, ignoreBounds=True)
         self.views[2].addItem(self.__textDate, ignoreBounds=True)
         self.views[2].addItem(self.__textSubSig, ignoreBounds=True)
@@ -429,6 +434,7 @@ class Crosshair(QtCore.QObject):
             volume = int(data['volume'])
             openInterest = int(data['openInterest'])
             preClosePrice = lastdata['close']
+            mas = self.master.listMA[xAxis]
             tradePrice = abs(self.master.listSig[xAxis])
         except Exception as e:
             return
@@ -439,7 +445,8 @@ class Crosshair(QtCore.QObject):
             timeText = dt.datetime.strftime(tickDatetime, '%H:%M:%S')
         elif isinstance(tickDatetime, np.datetime64):
             tickDatetime = tickDatetime.astype(dt.datetime)
-            _dt = dt.datetime.fromtimestamp(tickDatetime/1000000000) - dt.timedelta(hours=8)
+            # _dt = dt.datetime.fromtimestamp(tickDatetime/1000000000) - dt.timedelta(hours=8)
+            _dt = tickDatetime - dt.timedelta(hours=8)
             datetimeText = _dt.strftime('%Y-%m-%d %H:%M:%S')
             dateText = _dt.strftime('%Y-%m-%d')
             timeText = _dt.strftime('%H:%M:%S')
@@ -501,6 +508,15 @@ class Crosshair(QtCore.QObject):
                 <span style="color: white; font-size: 18px;">VOL : %.3f</span>\
             </div>' \
             % (volume))
+
+        maInfo = ''.join(f'<span style="color: {c}; font-size: 18px;">MA{p} : {v:.3f}</span>' for p, c, v in zip(DEFAULT_MA, ['red', 'blue', 'green', 'yellow'], mas))
+        self.__textMAs.setHtml(
+            '<div style="text-align: right">\
+                          %s\
+                      </div>' \
+            % (maInfo)
+        )
+
         # 坐标轴宽度
         rightAxisWidth = self.views[0].getAxis('right').width()
         bottomAxisHeight = self.views[2].getAxis('bottom').height()
@@ -530,6 +546,7 @@ class Crosshair(QtCore.QObject):
         self.__textSig.setPos(br[0].x(), tl[0].y())
         self.__textSubSig.setPos(br[2].x(), tl[2].y())
         self.__textVolume.setPos(br[1].x(), tl[1].y())
+        self.__textMAs.setPos(br[0].x(), tl[0].y())
 
         # 修改对称方式防止遮挡
         self.__textDate.anchor = Point((1, 1)) if xAxis > self.master.index else Point((0, 1))
