@@ -236,18 +236,27 @@ class KLineWidget(KeyWraper):
             self.event_engine.register(EVENT_TICK + contract.vt_symbol, self.signal_bar_update.emit)
             self.event_engine.register(EVENT_TRADE, self.signal_trade_update.emit)
             self.event_engine.register(EVENT_ORDER, self.signal_order_update.emit)
+            self.init_listTrade()
+            self.init_dictOrder()
+            self.plotTradeMark()
+            self.plotOrderMarkLine()
 
 
     def init_listTrade(self):
         all_trades = self.main_engine.get_all_trades()
         trades = [t for t in all_trades if t.vt_symbol == self.vt_symbol]
 
+        interval = {'1m': 60, '1h': 3600}.get(self.interval)
+
+        if not interval:
+            return
+
         for t in trades:
             # t_time = parser.parse(t.time)
             t_time = t.time
             for i, _time in enumerate(self.axisTime.x_strings):
                 timedelta = (t_time - _time).total_seconds()
-                if 0 <= timedelta < 60:
+                if 0 <= timedelta < interval:
                     time_int = i
                     if any(self.listTrade):
                         self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
@@ -288,8 +297,13 @@ class KLineWidget(KeyWraper):
         if trade.vt_symbol != self.vt_symbol:
             return
 
-        timedelta = (trade.time - self.datas[-1].datetime).total_seconds()
-        time_int = len(self.datas) - (timedelta // 60 + 1)
+        interval = {'1m': 60, '1h': 3600}.get(self.interval)
+
+        if not interval:
+            return
+
+        timedelta = (trade.time - self.datas[-1].datetime.astype(dt.datetime)).total_seconds()
+        time_int = len(self.datas) - (timedelta // interval + 1)
         if any(self.listTrade):
             self.listTrade.resize(len(self.listTrade) + 1, refcheck=0)
             self.listTrade[-1] = (time_int, trade.direction.value, trade.price, trade.volume)
@@ -786,7 +800,7 @@ class KLineWidget(KeyWraper):
         # 设置中心点时间
         # 绑定数据，更新横坐标映射，更新Y轴自适应函数，更新十字光标映射
         datas = pd.DataFrame([[b.datetime, b.open_price, b.close_price, b.low_price, b.high_price, b.volume, b.open_interest] for b in datas],
-                             columns=['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest'])
+                             columns=['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest']).set_index('datetime', drop=False)
         for p in DEFAULT_MA:
             datas[f'ma{p}'] = talib.MA(datas['close'].values, timeperiod=p)
 
@@ -794,7 +808,7 @@ class KLineWidget(KeyWraper):
         # trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
         self.datas = datas[['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest']].to_records(False, column_dtypes={'datetime': '<M8[s]'})
         self.axisTime.xdict = {}
-        xdict = dict(enumerate(datas.index.tolist()))
+        xdict = dict(enumerate(datas.index.to_list()))
         self.axisTime.update_xdict(xdict)
         self.resignData(self.datas)
         # 更新画图用到的数据
