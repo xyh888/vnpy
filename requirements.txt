@@ -18,3 +18,4 @@ rqdatac
 ta-lib
 ibapi
 deap
+jpush

@@ -43,6 +43,7 @@ from vnpy.trader.rqdata import rqdata_client
 from .base import (
     APP_NAME,
     EVENT_CTA_LOG,
+    EVENT_CTA_NOTIFY,
     EVENT_CTA_STRATEGY,
     EVENT_CTA_STOPORDER,
     EngineType,
@@ -52,6 +53,8 @@ from .base import (
 )
 from .template import CtaTemplate
 from .converter import OffsetConverter
+
+import jpush
 
 
 STOP_STATUS_MAP = {
@@ -102,10 +105,13 @@ class CtaEngine(BaseEngine):
 
         self.offset_converter = OffsetConverter(self.main_engine)
 
+        self.notifier = None
+
     def init_engine(self):
         """
         """
         self.init_rqdata()
+        self.init_notifier()
         self.load_strategy_class()
         self.load_strategy_setting()
         self.load_strategy_data()
@@ -122,6 +128,16 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
+        self.event_engine.register(EVENT_CTA_NOTIFY, self.process_notify_event)
+
+    def init_notifier(self):
+        from vnpy.trader.setting import get_settings
+        push_settings = get_settings('notification.')
+        if push_settings:
+            krPush = jpush.JPush(push_settings['app_key'], push_settings['master_secret'])
+            self.notifier = krPush.create_push()
+            self.notifier.audience = jpush.all_
+            self.notifier.platform = jpush.all_
 
     def init_rqdata(self):
         """
@@ -228,6 +244,24 @@ class CtaEngine(BaseEngine):
         position = event.data
 
         self.offset_converter.update_position(position)
+
+    def process_notify_event(self, event: Event):
+        notification = event.data.msg
+        if self.notifier:
+            self.notifier.notification = jpush.notification(alert=notification)
+            try:
+                response = self.notifier.send()
+            except jpush.common.Unauthorized as unauth:
+                self.write_log(f'KRPushUnauthorized: {unauth}')
+            except jpush.common.APIConnectionException as conne:
+                self.write_log(f'KRPushAPIConnectionException: {conne}')
+            except jpush.common.JPushFailure as pushFail:
+                self.write_log(f'KRPushFailure: {pushFail}')
+            except Exception as e:
+                self.write_log(f'KRPushException: {e}')
+        else:
+            self.write_log(f'KRPush未配置,无法推送->{notification}')
+
 
     def check_stop_order(self, tick: TickData):
         """"""
@@ -897,6 +931,17 @@ class CtaEngine(BaseEngine):
 
         log = LogData(msg=msg, gateway_name="CtaStrategy")
         event = Event(type=EVENT_CTA_LOG, data=log)
+        self.event_engine.put(event)
+
+    def send_notification(self, msg: str, strategy: CtaTemplate = None):
+        """
+        Create cta engine log event.
+        """
+        if strategy:
+            msg = f"{strategy.strategy_name}: {msg}"
+
+        log = LogData(msg=msg, gateway_name="CtaStrategy")
+        event = Event(type=EVENT_CTA_NOTIFY, data=log)
         self.event_engine.put(event)
 
     def send_email(self, msg: str, strategy: CtaTemplate = None):
