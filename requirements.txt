@@ -18,4 +18,5 @@ rqdatac
 ta-lib
 ibapi
 deap
+pyzmq
 jpush
