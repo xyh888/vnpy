@@ -285,13 +285,17 @@ class CtaEngine(BaseEngine):
                 if stop_order.direction == Direction.LONG:
                     if tick.limit_up:
                         price = tick.limit_up
-                    else:
+                    elif tick.ask_price_5:
                         price = tick.ask_price_5
+                    else:
+                        price = int(tick.ask_price_1 * 1.01)
                 else:
                     if tick.limit_down:
                         price = tick.limit_down
-                    else:
+                    elif tick.bid_price_5:
                         price = tick.bid_price_5
+                    else:
+                        price = int(tick.bid_price_1 * 0.99)
                 
                 contract = self.main_engine.get_contract(stop_order.vt_symbol)
 
