@@ -442,17 +442,26 @@ class IbApi(EWrapper):
             accountName,
         )
 
-
-        if not contract.multiplier:
-            ib_size = 1
+        if contract.exchange:
+            exchange = EXCHANGE_IB2VT.get(contract.exchange, None)
+        elif contract.primaryExchange:
+            exchange = EXCHANGE_IB2VT.get(contract.primaryExchange, None)
         else:
-            ib_size = float(contract.multiplier)
-        price = averageCost / ib_size
-        exchange = contract.exchange if contract.exchange else contract.primaryExchange
+            exchange = Exchange.SMART   # Use smart routing for default
+
+        if not exchange:
+            msg = f"存在不支持的交易所持仓{contract.conId} {contract.exchange} {contract.primaryExchange}"
+            self.gateway.write_log(msg)
+            return
+
+        ib_size = contract.multiplier
+        if not ib_size:
+            ib_size = 1
+        price = averageCost / float(ib_size)
 
         pos = PositionData(
             symbol=contract.conId,
-            exchange=EXCHANGE_IB2VT.get(exchange, exchange),
+            exchange=exchange,
             direction=Direction.NET,
             volume=position,
             price=price,
@@ -477,12 +486,11 @@ class IbApi(EWrapper):
 
         ib_symbol = contractDetails.contract.conId
         ib_exchange = contractDetails.contract.exchange
+        ib_size = contractDetails.contract.multiplier
         ib_product = contractDetails.contract.secType
 
-        if not contractDetails.contract.multiplier:
+        if not ib_size:
             ib_size = 1
-        else:
-            ib_size = float(contractDetails.contract.multiplier)
 
         contract = ContractData(
             symbol=ib_symbol,

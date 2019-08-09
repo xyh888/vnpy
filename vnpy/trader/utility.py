@@ -24,6 +24,9 @@ def extract_vt_symbol(vt_symbol: str):
 
 
 def generate_vt_symbol(symbol: str, exchange: Exchange):
+    """
+    return vt_symbol
+    """
     return f"{symbol}.{exchange.value}"
 
 

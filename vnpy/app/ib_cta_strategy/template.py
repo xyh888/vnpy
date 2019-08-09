@@ -212,6 +212,14 @@ class CtaTemplate(ABC):
         """
         self.cta_engine.write_log(msg, self)
 
+    def send_notification(self, msg: str):
+        """
+        push a msg to phone
+        :param msg:
+        :return:
+        """
+        self.cta_engine.send_notification(msg, self)
+
     def get_engine_type(self):
         """
         Return whether the cta_engine is backtesting or live trading.
