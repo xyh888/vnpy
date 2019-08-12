@@ -678,6 +678,7 @@ class IbApi(EWrapper):
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
         ib_order.lmtPrice = req.price
         ib_order.totalQuantity = req.volume
+        ib_order.account = self.major_account
 
         self.client.placeOrder(self.orderid, ib_contract, ib_order)
         self.client.reqIds(1)
