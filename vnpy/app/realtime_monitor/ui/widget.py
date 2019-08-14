@@ -173,13 +173,14 @@ class KLineWidget(KeyWraper):
         # 初始化完成
         self.initCompleted = True
 
-        for c in self.main_engine.get_all_contracts():
-            now = dt.datetime.now()
-            if (c.expiry.year, c.expiry.month) == (now.year, now.month):
-                self.symbol_line.setText(str(c.symbol))
-                self.exchange_combo.setCurrentText(c.exchange.value)
-                self.subscribe()
-                break
+        if self.main_engine is not None:
+            for c in self.main_engine.get_all_contracts():
+                now = dt.datetime.now()
+                if (c.expiry.year, c.expiry.month) == (now.year, now.month):
+                    self.symbol_line.setText(str(c.symbol))
+                    self.exchange_combo.setCurrentText(c.exchange.value)
+                    self.subscribe()
+                    break
 
 
 
@@ -799,13 +800,13 @@ class KLineWidget(KeyWraper):
         """
         # 设置中心点时间
         # 绑定数据，更新横坐标映射，更新Y轴自适应函数，更新十字光标映射
-        datas = pd.DataFrame([[b.datetime, b.open_price, b.close_price, b.low_price, b.high_price, b.volume, b.open_interest] for b in datas],
+        datas = pd.DataFrame([[b.datetime, b.open_price, b.close_price, b.low_price, b.high_price, b.volume, getattr(b, 'open_interest', 0)] for b in datas],
                              columns=['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest']).set_index('datetime', drop=False)
         for p in DEFAULT_MA:
             datas[f'ma{p}'] = talib.MA(datas['close'].values, timeperiod=p)
 
         datas['time_int'] = np.array(range(len(datas.index)))
-        # trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
+        trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
         self.datas = datas[['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest']].to_records(False, column_dtypes={'datetime': '<M8[s]'})
         self.axisTime.xdict = {}
         xdict = dict(enumerate(datas.index.to_list()))
@@ -818,7 +819,7 @@ class KLineWidget(KeyWraper):
         self.listOpenInterest = list(datas['openInterest'])
         self.listSig = [0] * (len(self.datas) - 1) if sigs is None else sigs
         self.listMA = datas[[f'ma{p}' for p in DEFAULT_MA]].to_records(False)
-        # self.listTrade = trades[['time_int', 'direction', 'price', 'volume']].to_records(False)
+        self.listTrade = trades[['time_int', 'direction', 'price', 'volume']].to_records(False)
         # 成交量颜色和涨跌同步，K线方向由涨跌决定
         datas0 = pd.DataFrame()
         datas0['open'] = datas.apply(lambda x: 0 if x['close'] >= x['open'] else x['volume'], axis=1)
