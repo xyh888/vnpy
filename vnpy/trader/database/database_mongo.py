@@ -1,11 +1,12 @@
 from datetime import datetime
+from dateutil import parser
 from enum import Enum
 from typing import Optional, Sequence
 
 from mongoengine import DateTimeField, Document, FloatField, StringField, connect
 
-from vnpy.trader.constant import Exchange, Interval
-from vnpy.trader.object import BarData, TickData
+from vnpy.trader.constant import Exchange, Interval, Direction, Offset
+from vnpy.trader.object import BarData, TickData, TradeData
 from .database import BaseDatabaseManager, Driver
 
 
@@ -259,6 +260,61 @@ class DbTickData(Document):
 
         return tick
 
+class DbTradeData(Document):
+    strategy: str = StringField()
+    symbol: str = StringField()
+    exchange: str = StringField()
+    orderid: str = StringField()
+    tradeid: str = StringField()
+    direction: str = StringField()
+
+    offset: str = StringField()
+    price: float = FloatField()
+    volume: float = FloatField()
+    time: datetime = DateTimeField()
+
+    meta = {
+        "indexes": [
+            {
+                "fields": ("symbol", "exchange", "tradeid", "strategy"),
+                "unique": True,
+            }
+        ],
+    }
+
+    @staticmethod
+    def from_trade(trade: TradeData, strategy: str=None):
+        db_trade = DbTradeData()
+        if strategy:
+            db_trade.strategy = strategy
+
+        db_trade.symbol = trade.symbol
+        db_trade.exchange = trade.exchange.value
+        db_trade.orderid = trade.orderid
+        db_trade.tradeid = trade.tradeid
+        db_trade.direction = trade.direction.value
+        db_trade.offset = trade.offset.value
+        db_trade.price = trade.price
+        db_trade.volume = trade.volume
+        db_trade.time = parser.parse(trade.time) if isinstance(trade.time, str) else trade.time
+
+        return db_trade
+
+    def to_trade(self):
+        trade = TradeData(
+            symbol=self.symbol,
+            exchange=Exchange(self.exchange),
+            orderid=self.orderid,
+            tradeid=self.tradeid,
+            direction=Direction(self.direction),
+            offset=Offset(self.offset),
+            price=self.price,
+            volume=self.volume,
+            time=self.time if isinstance(self.time, str) else self.time.strftime("%Y%m%d  %H:%M:%S"),
+            gateway_name="DB"
+        )
+
+        return trade
 
 class MongoManager(BaseDatabaseManager):
 
@@ -292,6 +348,24 @@ class MongoManager(BaseDatabaseManager):
         data = [db_tick.to_tick() for db_tick in s]
         return data
 
+    def load_trade_data(
+            self,  start: datetime, end: datetime,
+            symbol: str=None, exchange: Exchange=None, strategy: str=None) -> Sequence[TradeData]:
+        params = {'datetime_gte': start, 'datetime_lte': end}
+        if symbol is not None:
+            params['symbol'] = symbol
+
+        if exchange is not None:
+            params['exchange'] = exchange
+
+        if strategy is not None:
+            params['strategy'] = strategy
+
+        s = DbTradeData.objects(**params)
+
+        data = [db_trade.to_trade() for db_trade in s]
+        return data
+
     @staticmethod
     def to_update_param(d):
         return {
@@ -318,6 +392,21 @@ class MongoManager(BaseDatabaseManager):
             (
                 DbTickData.objects(
                     symbol=d.symbol, exchange=d.exchange.value, datetime=d.datetime
+                ).update_one(upsert=True, **updates)
+            )
+
+    def save_trade_data(self, datas: Sequence[TradeData], strategy: str=None):
+        for d in datas:
+            updates = self.to_update_param(d)
+            updates.pop("set__gateway_name")
+            updates.pop("set__vt_symbol")
+            updates.pop("set__vt_orderid")
+            updates.pop("set__vt_tradeid")
+            (
+                DbTradeData.objects(
+                    symbol=d.symbol, exchange=d.exchange.value,
+                    time=parser.parse(d.time) if isinstance(d.time, str) else d.time,
+                    strategy="" if strategy is None else strategy
                 ).update_one(upsert=True, **updates)
             )
 
@@ -348,3 +437,6 @@ class MongoManager(BaseDatabaseManager):
     def clean(self, symbol: str):
         DbTickData.objects(symbol=symbol).delete()
         DbBarData.objects(symbol=symbol).delete()
+
+    def cleanTrade(self, strategy: str):
+        DbTradeData.objects(strategy=strategy).delete()

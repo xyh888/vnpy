@@ -806,7 +806,6 @@ class KLineWidget(KeyWraper):
             datas[f'ma{p}'] = talib.MA(datas['close'].values, timeperiod=p)
 
         datas['time_int'] = np.array(range(len(datas.index)))
-        trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
         self.datas = datas[['datetime', 'open', 'close', 'low', 'high', 'volume', 'openInterest']].to_records(False, column_dtypes={'datetime': '<M8[s]'})
         self.axisTime.xdict = {}
         xdict = dict(enumerate(datas.index.to_list()))
@@ -819,7 +818,9 @@ class KLineWidget(KeyWraper):
         self.listOpenInterest = list(datas['openInterest'])
         self.listSig = [0] * (len(self.datas) - 1) if sigs is None else sigs
         self.listMA = datas[[f'ma{p}' for p in DEFAULT_MA]].to_records(False)
-        self.listTrade = trades[['time_int', 'direction', 'price', 'volume']].to_records(False)
+        if trades is not None:
+            trades = trades.merge(datas['time_int'], how='left', left_index=True, right_index=True)
+            self.listTrade = trades[['time_int', 'direction', 'price', 'volume']].to_records(False)
         # 成交量颜色和涨跌同步，K线方向由涨跌决定
         datas0 = pd.DataFrame()
         datas0['open'] = datas.apply(lambda x: 0 if x['close'] >= x['open'] else x['volume'], axis=1)
