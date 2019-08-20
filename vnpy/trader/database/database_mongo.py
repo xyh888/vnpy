@@ -310,7 +310,8 @@ class DbTradeData(Document):
             offset=Offset(self.offset),
             price=self.price,
             volume=self.volume,
-            time=self.time if isinstance(self.time, str) else self.time.strftime("%Y%m%d  %H:%M:%S"),
+            # time=self.time if isinstance(self.time, str) else self.time.strftime("%Y%m%d  %H:%M:%S"),
+            time=self.time,
             gateway_name="DB"
         )
 
@@ -351,7 +352,7 @@ class MongoManager(BaseDatabaseManager):
     def load_trade_data(
             self,  start: datetime, end: datetime,
             symbol: str=None, exchange: Exchange=None, strategy: str=None) -> Sequence[TradeData]:
-        params = {'datetime_gte': start, 'datetime_lte': end}
+        params = {'time__gte': start, 'time__lte': end}
         if symbol is not None:
             params['symbol'] = symbol
 
@@ -433,6 +434,9 @@ class MongoManager(BaseDatabaseManager):
         if s:
             return s.to_tick()
         return None
+
+    def get_all_strategy(self):
+        return DbTradeData.objects.distinct('strategy')
 
     def clean(self, symbol: str):
         DbTickData.objects(symbol=symbol).delete()
