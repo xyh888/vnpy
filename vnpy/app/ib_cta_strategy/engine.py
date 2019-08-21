@@ -236,8 +236,11 @@ class CtaEngine(BaseEngine):
         # Sync strategy variables to data file
         self.sync_strategy_data(strategy)
 
+        database_manager.save_trade_data([trade], strategy.strategy_name)
+
         # Update GUI
         self.put_strategy_event(strategy)
+
 
     def process_position_event(self, event: Event):
         """"""

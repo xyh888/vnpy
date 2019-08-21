@@ -378,7 +378,7 @@ class IbApi(EWrapper):
 
         orderid = str(orderId)
         order = OrderData(
-            symbol=ib_contract.conId,
+            symbol=str(ib_contract.conId),
             exchange=EXCHANGE_IB2VT.get(
                 ib_contract.exchange, ib_contract.exchange),
             type=ORDERTYPE_IB2VT[ib_order.orderType],
@@ -460,7 +460,7 @@ class IbApi(EWrapper):
         price = averageCost / float(ib_size)
 
         pos = PositionData(
-            symbol=contract.conId,
+            symbol=str(contract.conId),
             exchange=exchange,
             direction=Direction.NET,
             volume=position,
@@ -493,7 +493,7 @@ class IbApi(EWrapper):
             ib_size = 1
 
         contract = ContractData(
-            symbol=ib_symbol,
+            symbol=str(ib_symbol),
             exchange=EXCHANGE_IB2VT.get(ib_exchange, ib_exchange),
             name=contractDetails.longName,
             product=PRODUCT_IB2VT[ib_product],
@@ -519,7 +519,7 @@ class IbApi(EWrapper):
 
         # today_date = datetime.now().strftime("%Y%m%d")
         trade = TradeData(
-            symbol=contract.conId,
+            symbol=str(contract.conId),
             exchange=EXCHANGE_IB2VT.get(contract.exchange, contract.exchange),
             orderid=str(execution.orderId),
             tradeid=str(execution.execId),
@@ -642,7 +642,7 @@ class IbApi(EWrapper):
         self.client.reqMktData(self.reqid, ib_contract, "", False, False, [])
 
         tick = TickData(
-            symbol=req.symbol,
+            symbol=str(req.symbol),
             exchange=req.exchange,
             datetime=datetime.now(),
             gateway_name=self.gateway_name,
