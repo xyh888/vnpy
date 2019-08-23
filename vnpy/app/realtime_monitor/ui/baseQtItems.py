@@ -556,19 +556,22 @@ class Crosshair(QtCore.QObject):
 from vnpy.chart.item import ChartItem
 from vnpy.chart.manager import BarManager
 from vnpy.trader.object import BarData
-from vnpy.chart.base import BAR_WIDTH
+from vnpy.chart.base import BAR_WIDTH, PEN_WIDTH
 from vnpy.trader.utility import ArrayManager
 from typing import Tuple
 
 class MACurveItem(ChartItem):
-    """"""
-
+    MA_COLORS = {5: pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
+                 10: pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH),
+                 20: pg.mkPen(color=(218, 112, 214), width=PEN_WIDTH),
+                 30: pg.mkPen(color=(0, 255, 0), width=PEN_WIDTH),
+                 60: pg.mkPen(color=(64, 224, 208), width=PEN_WIDTH)}
     def __init__(self, manager: BarManager):
         """"""
         super().__init__(manager)
-        self.periods = [5, 10, 20, 30]
+        self.periods = [5, 10, 20, 30, 60]
         self._arrayManager = ArrayManager(max(self.periods) + 1)
-        self.last_ix = -1
+        self.last_ix = 0
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -577,6 +580,7 @@ class MACurveItem(ChartItem):
         if ix <= self.last_ix:
             return ma_picture
 
+        print(ix, self.last_ix)
         pre_bar = self._manager.get_bar(ix-1)
 
         if not pre_bar:
@@ -585,14 +589,16 @@ class MACurveItem(ChartItem):
         self._arrayManager.update_bar(pre_bar)
         painter = QtGui.QPainter(ma_picture)
 
-        # Set painter color
-        painter.setPen(self._up_pen)
-
         # Draw volume body
         for p in self.periods:
-            line = QtCore.QLine()
             sma=self._arrayManager.sma(p, True)
+            pre_ma = sma[-2]
+            ma = sma[-1]
+            if np.isnan(pre_ma) or np.isnan(ma):
+                continue
+            line = QtCore.QLine()
             line.setLine(ix-2, sma[-2], ix-1, sma[-1])
+            painter.setPen(self.MA_COLORS[p])
             painter.drawLine(line)
 
         # Finish
@@ -602,13 +608,14 @@ class MACurveItem(ChartItem):
 
     def boundingRect(self) -> QtCore.QRectF:
         """"""
-        min_volume, max_volume = self._manager.get_price_range()
+        min_price, max_price = self._manager.get_price_range()
         rect = QtCore.QRectF(
             0,
-            min_volume,
+            min_price,
             len(self._bar_picutures),
-            max_volume - min_volume
+            max_price - min_price
         )
+        print(rect)
         return rect
 
     def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
@@ -639,4 +646,4 @@ class MACurveItem(ChartItem):
         """
         super().clear_all()
         self._arrayManager = ArrayManager(max(self.periods) + 1)
-        self.last_ix = -1
+        self.last_ix = 0
