@@ -174,10 +174,11 @@ class TradeChartDialog(QtWidgets.QDialog):
         end = trade_data[-1].time.replace(hour=23, minute=59, second=59)
 
         req = HistoryRequest(symbol, exchange, start, end, Interval.HOUR)
-        history_data = self.main_engine.get_gateway('IB').query_history(req)
-
-        self.candleChart.update_history(history_data)
-        self.candleChart.update_trades(trade_data)
+        gateway = self.main_engine.get_gateway('IB')
+        if gateway and gateway.api.status:
+            history_data = self.main_engine.get_gateway('IB').query_history(req)
+            self.candleChart.update_history(history_data)
+            self.candleChart.update_trades(trade_data)
 
         self.candleChart.show()
 
@@ -229,7 +230,7 @@ class CandleChartDialog(QtWidgets.QDialog):
         for trade in trades:
             for _time in self.dt_ix_map.keys():
                 if dt.timedelta(minutes=0) <= trade.time - _time < dt.timedelta(minutes=60):
-                    _time = trade.time.replace(minute=15, second=0)
+                    _time = _time
                     ix = self.dt_ix_map[_time]
 
                     scatter = {

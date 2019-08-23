@@ -38,7 +38,7 @@ class BaseDatabaseManager(ABC):
     ) -> Sequence["TickData"]:
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def load_trade_data(
             self,
             start: datetime,
@@ -63,7 +63,7 @@ class BaseDatabaseManager(ABC):
     ):
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def save_trade_data(
             self,
             datas: Sequence["TradeData"],
