@@ -5,4 +5,4 @@
 @author:Hadrianl
 
 """
-from .widget import KLineWidget
+from .widget import CandleChartWidget

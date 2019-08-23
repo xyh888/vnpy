@@ -551,3 +551,92 @@ class Crosshair(QtCore.QObject):
         # 修改对称方式防止遮挡
         self.__textDate.anchor = Point((1, 1)) if xAxis > self.master.index else Point((0, 1))
         self.__textDate.setPos(xAxis, br[2].y())
+
+
+from vnpy.chart.item import ChartItem
+from vnpy.chart.manager import BarManager
+from vnpy.trader.object import BarData
+from vnpy.chart.base import BAR_WIDTH
+from vnpy.trader.utility import ArrayManager
+from typing import Tuple
+
+class MACurveItem(ChartItem):
+    """"""
+
+    def __init__(self, manager: BarManager):
+        """"""
+        super().__init__(manager)
+        self.periods = [5, 10, 20, 30]
+        self._arrayManager = ArrayManager(max(self.periods) + 1)
+        self.last_ix = -1
+
+    def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
+        """"""
+        # Create objects
+        ma_picture = QtGui.QPicture()
+        if ix <= self.last_ix:
+            return ma_picture
+
+        pre_bar = self._manager.get_bar(ix-1)
+
+        if not pre_bar:
+            return ma_picture
+
+        self._arrayManager.update_bar(pre_bar)
+        painter = QtGui.QPainter(ma_picture)
+
+        # Set painter color
+        painter.setPen(self._up_pen)
+
+        # Draw volume body
+        for p in self.periods:
+            line = QtCore.QLine()
+            sma=self._arrayManager.sma(p, True)
+            line.setLine(ix-2, sma[-2], ix-1, sma[-1])
+            painter.drawLine(line)
+
+        # Finish
+        painter.end()
+        self.last_ix = ix
+        return ma_picture
+
+    def boundingRect(self) -> QtCore.QRectF:
+        """"""
+        min_volume, max_volume = self._manager.get_price_range()
+        rect = QtCore.QRectF(
+            0,
+            min_volume,
+            len(self._bar_picutures),
+            max_volume - min_volume
+        )
+        return rect
+
+    def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
+        """
+        Get range of y-axis with given x-axis range.
+
+        If min_ix and max_ix not specified, then return range with whole data set.
+        """
+        min_volume, max_volume = self._manager.get_price_range(min_ix, max_ix)
+        return min_volume, max_volume
+
+    def get_info_text(self, ix: int) -> str:
+        """
+        Get information text to show by cursor.
+        """
+        # bar = self._manager.get_bar(ix)
+
+        # if bar:
+        #     text = f"Volume {bar.volume}"
+        # else:
+        #     text = ""
+
+        return "ma testing"
+
+    def clear_all(self) -> None:
+        """
+        Clear all data in the item.
+        """
+        super().clear_all()
+        self._arrayManager = ArrayManager(max(self.periods) + 1)
+        self.last_ix = -1
