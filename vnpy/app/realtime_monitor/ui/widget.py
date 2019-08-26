@@ -852,14 +852,17 @@ DEFAULT_MA_COLOR = ['r', 'b', 'g', 'y']
 
 
 from .baseQtItems import MACurveItem, MACDItem
-from vnpy.chart.widget import CURSOR_COLOR, BLACK_COLOR, NORMAL_FONT
+from vnpy.chart.base import UP_COLOR, DOWN_COLOR, CURSOR_COLOR, BLACK_COLOR, NORMAL_FONT, PEN_WIDTH
 from collections import defaultdict
+from vnpy.trader.object import OrderData
+from vnpy.trader.constant import Status
 
 class CandleChartWidget(QtWidgets.QWidget):
     """
     """
     signal_update_bar = QtCore.pyqtSignal(BarData)
     signal_update_trade = QtCore.pyqtSignal(TradeData)
+    signal_update_order = QtCore.pyqtSignal(OrderData)
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """"""
         super().__init__()
@@ -911,6 +914,8 @@ class CandleChartWidget(QtWidgets.QWidget):
         candle_plot = self.chart.get_plot("candle")
         candle_plot.addItem(self.trade_scatter)
 
+        self.order_lines = defaultdict(pg.InfiniteLine)
+
         self.trade_info = trade_info = pg.TextItem(
                 "info",
                 anchor=(1, 0),
@@ -934,6 +939,7 @@ class CandleChartWidget(QtWidgets.QWidget):
         if self.vt_symbol is not None:
             self.event_engine.unregister(EVENT_TICK + self.vt_symbol, self.process_tick_event)
             self.event_engine.unregister(EVENT_TRADE + self.vt_symbol, self.process_trade_event)
+            self.event_engine.unregister(EVENT_ORDER, self.process_order_event)
 
         self.clear_data()
         self.vt_symbol = vt_symbol
@@ -945,13 +951,18 @@ class CandleChartWidget(QtWidgets.QWidget):
 
             his_data = self.main_engine.query_history(req, contract.gateway_name)
             trade_data = [t for t in self.main_engine.get_all_trades() if t.vt_symbol == self.vt_symbol]
+            order_data = [o for o in self.main_engine.get_all_orders() if o.vt_symbol == self.vt_symbol]
             self.bar_generator.bar = his_data[-1]
 
             self.event_engine.register(EVENT_TICK + self.vt_symbol, self.process_tick_event)
             self.event_engine.register(EVENT_TRADE + self.vt_symbol, self.process_trade_event)
+            self.event_engine.register(EVENT_ORDER, self.process_order_event)
             self.update_history_bar(his_data)
             self.update_trades(trade_data)
             self.update_pos()
+
+            for o in order_data:
+                self.signal_update_order.emit(o)
 
     def add_contract(self, event: Event):
         c = event.data
@@ -962,6 +973,7 @@ class CandleChartWidget(QtWidgets.QWidget):
         self.event_engine.register(EVENT_CONTRACT, self.add_contract)
         self.signal_update_bar.connect(self.chart.update_bar)
         self.signal_update_trade.connect(self.update_trade)
+        self.signal_update_order.connect(self.update_order)
 
     def process_tick_event(self, event: Event):
         self.bar_generator.update_tick(event.data)
@@ -975,6 +987,12 @@ class CandleChartWidget(QtWidgets.QWidget):
         trade = event.data
 
         self.signal_update_trade.emit(trade)
+
+    def process_order_event(self, event: Event):
+        order = event.data
+
+        if order.vt_symbol == self.vt_symbol:
+            self.signal_update_order.emit(order)
 
     def update_history_bar(self, history: list):
         """"""
@@ -1048,6 +1066,28 @@ class CandleChartWidget(QtWidgets.QWidget):
 
             self.trade_scatter.addPoints([scatter])
 
+    def update_order(self, order: OrderData):
+        # (pos=o.price, angle=0, movable=False,
+        #                                            pen=pen, hoverPen=hoverPen,
+        #                                            label=f'BUY-{o.price}-{o.volume - o.traded}', labelOpts={'color':'r'})
+        print(order)
+        if order.status in (Status.NOTTRADED, Status.PARTTRADED):
+            line = self.order_lines[order.vt_orderid]
+            line.setPos(order.price)
+            line.setAngle(0)
+            line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
+            line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
+            line.label = pg.InfLineLabel(line,
+                                         text=f'{"↑" if order.direction == Direction.LONG else "↓"}{order.volume}@{order.price}',
+                                         color='r' if order.direction == Direction.LONG else 'g')
+            candle_plot = self.chart.get_plot("candle")
+            candle_plot.addItem(line)
+        else:
+            if order.vt_orderid in self.order_lines:
+                line = self.order_lines[order.vt_orderid]
+                candle_plot = self.chart.get_plot("candle")
+                candle_plot.removeItem(line)
+
     def update_pos(self):
         net_p = 0
         net_value = 0
@@ -1087,6 +1127,11 @@ class CandleChartWidget(QtWidgets.QWidget):
         if self.bar_generator.bar:
             self.bar_generator.generate()
 
+        candle_plot = self.chart.get_plot("candle")
+
+        for l in self.order_lines:
+            candle_plot.removeItem(l)
+
     def is_updated(self):
         """"""
         return self.updated
@@ -1095,6 +1140,7 @@ class CandleChartWidget(QtWidgets.QWidget):
         if self.vt_symbol is not None:
             self.event_engine.unregister(EVENT_TICK + self.vt_symbol, self.process_tick_event)
             self.event_engine.unregister(EVENT_TRADE + self.vt_symbol, self.process_trade_event)
+            self.event_engine.unregister(EVENT_ORDER + self.vt_symbol, self.process_order_event)
 
         self.clear_data()
         self.contract_combo.setCurrentIndex(-1)
