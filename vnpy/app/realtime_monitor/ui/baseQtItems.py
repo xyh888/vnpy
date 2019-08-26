@@ -559,6 +559,7 @@ from vnpy.trader.object import BarData
 from vnpy.chart.base import BAR_WIDTH, PEN_WIDTH
 from vnpy.trader.utility import ArrayManager
 from typing import Tuple
+from collections import defaultdict
 
 class MACurveItem(ChartItem):
     MA_COLORS = {5: pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
@@ -571,21 +572,23 @@ class MACurveItem(ChartItem):
         super().__init__(manager)
         self.periods = [5, 10, 20, 30, 60]
         self._arrayManager = ArrayManager(max(self.periods) + 1)
+        self.mas = defaultdict(dict)
         self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
         # Create objects
-        ma_picture = QtGui.QPicture()
-        if ix <= self.last_ix:
-            return ma_picture
 
-        print(ix, self.last_ix)
+        if ix <= self.last_ix:
+            return self.last_picture
+
         pre_bar = self._manager.get_bar(ix-1)
 
         if not pre_bar:
-            return ma_picture
+            return self.last_picture
 
+        ma_picture = QtGui.QPicture()
         self._arrayManager.update_bar(pre_bar)
         painter = QtGui.QPainter(ma_picture)
 
@@ -594,6 +597,7 @@ class MACurveItem(ChartItem):
             sma=self._arrayManager.sma(p, True)
             pre_ma = sma[-2]
             ma = sma[-1]
+            self.mas[p][ix-1] = ma
             if np.isnan(pre_ma) or np.isnan(ma):
                 continue
             line = QtCore.QLine()
@@ -604,6 +608,7 @@ class MACurveItem(ChartItem):
         # Finish
         painter.end()
         self.last_ix = ix
+        self.last_picture = ma_picture
         return ma_picture
 
     def boundingRect(self) -> QtCore.QRectF:
@@ -615,7 +620,6 @@ class MACurveItem(ChartItem):
             len(self._bar_picutures),
             max_price - min_price
         )
-        print(rect)
         return rect
 
     def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
@@ -631,14 +635,8 @@ class MACurveItem(ChartItem):
         """
         Get information text to show by cursor.
         """
-        # bar = self._manager.get_bar(ix)
-
-        # if bar:
-        #     text = f"Volume {bar.volume}"
-        # else:
-        #     text = ""
-
-        return "ma testing"
+        text = '\n'.join(f'ma{p}: {v.get(ix, np.nan):.2f}' for p, v in self.mas.items())
+        return f"MA \n{text}"
 
     def clear_all(self) -> None:
         """
@@ -646,4 +644,115 @@ class MACurveItem(ChartItem):
         """
         super().clear_all()
         self._arrayManager = ArrayManager(max(self.periods) + 1)
+        self.mas = defaultdict(dict)
         self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+
+class MACDItem(ChartItem):
+    MACD_PARAMS = [12, 26, 9]
+    MACD_COLORS = {'diff': pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
+                 'dea': pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH),
+                 'macd': {'up': pg.mkBrush(color=(255, 0, 0)), 'down': pg.mkBrush(color=(0, 255, 50))}}
+    def __init__(self, manager: BarManager):
+        """"""
+        super().__init__(manager)
+        self._arrayManager = ArrayManager(150)
+        self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+        self.macds = defaultdict(dict)
+        self.br_max = np.inf
+        self.br_min = -np.inf
+
+    def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
+        """"""
+        # Create objects
+        if ix <= self.last_ix:
+            return self.last_picture
+
+        pre_bar = self._manager.get_bar(ix-1)
+
+        if not pre_bar:
+            return self.last_picture
+
+        macd_picture = QtGui.QPicture()
+        self._arrayManager.update_bar(pre_bar)
+        painter = QtGui.QPainter(macd_picture)
+
+        diff, dea, macd = self._arrayManager.macd(*self.MACD_PARAMS, array=True)
+        self.br_max = max(self.br_max, diff[-1], dea[-1], macd[-1])
+        self.br_min = min(self.br_min, diff[-1], dea[-1], macd[-1])
+        self.macds['diff'][ix-1] = diff[-1]
+        self.macds['dea'][ix-1] = dea[-1]
+        self.macds['macd'][ix-1] = macd[-1]
+        if not (np.isnan(diff[-2]) or np.isnan(dea[-2]) or np.isnan(macd[-1])):
+            diff_line = QtCore.QLine()
+            dea_line = QtCore.QLine()
+            diff_line.setLine(ix - 2, diff[-2], ix - 1, diff[-1])
+            dea_line.setLine(ix - 2, dea[-2], ix - 1, dea[-1])
+            macd_bar = QtCore.QRectF(ix - 1 - BAR_WIDTH, 0,
+                                     BAR_WIDTH * 2, macd[-1])
+
+            painter.setPen(self.MACD_COLORS['dea'])
+            painter.drawLine(dea_line)
+            painter.setPen(self.MACD_COLORS['diff'])
+            painter.drawLine(diff_line)
+
+            if macd[-1] > 0:
+                painter.setBrush(self.MACD_COLORS['macd']['up'])
+            else:
+                painter.setBrush(self.MACD_COLORS['macd']['down'])
+
+            painter.drawRect(macd_bar)
+
+        # Finish
+        painter.end()
+        self.last_ix = ix
+        self.last_picture = macd_picture
+        return macd_picture
+
+    def boundingRect(self) -> QtCore.QRectF:
+        """"""
+        rect = QtCore.QRectF(
+            0,
+            self.br_min,
+            len(self._bar_picutures),
+            self.br_max - self.br_min
+        )
+        return rect
+
+
+    def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
+        """
+        Get range of y-axis with given x-axis range.
+
+        If min_ix and max_ix not specified, then return range with whole data set.
+        """
+        min_ix = 0 if min_ix is None else min_ix
+        max_ix = self.last_ix if max_ix is None else max_ix
+
+        min_v = np.inf
+        max_v = -np.inf
+
+        for i in range(min_ix, max_ix):
+            min_v = min(min_v, self.macds['diff'].get(i, min_v), self.macds['dea'].get(i, min_v), self.macds['macd'].get(i, min_v))
+            max_v = max(max_v, self.macds['diff'].get(i, max_v), self.macds['dea'].get(i, max_v), self.macds['macd'].get(i, max_v))
+
+        return min_v, max_v
+
+    def get_info_text(self, ix: int) -> str:
+        """
+        Get information text to show by cursor.
+        """
+        return f"MACD{self.MACD_PARAMS}  DIFF:{self.macds['diff'].get(ix, np.nan):.2f} DEA:{self.macds['dea'].get(ix, np.nan):.2f} MACD:{self.macds['macd'].get(ix, np.nan):.2f}"
+
+    def clear_all(self) -> None:
+        """
+        Clear all data in the item.
+        """
+        super().clear_all()
+        self._arrayManager = ArrayManager(150)
+        self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+        self.macds = defaultdict(dict)
+        self.br_max = np.inf
+        self.br_min = -np.inf
