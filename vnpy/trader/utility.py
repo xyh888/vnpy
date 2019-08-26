@@ -352,6 +352,15 @@ class ArrayManager(object):
             return result
         return result[-1]
 
+    def ma(self, n, array=False):
+        """
+        Simple moving average.
+        """
+        result = talib.MA(self.close, n)
+        if array:
+            return result
+        return result[-1]
+
     def std(self, n, array=False):
         """
         Standard deviation

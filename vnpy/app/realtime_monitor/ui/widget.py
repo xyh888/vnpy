@@ -1067,10 +1067,6 @@ class CandleChartWidget(QtWidgets.QWidget):
             self.trade_scatter.addPoints([scatter])
 
     def update_order(self, order: OrderData):
-        # (pos=o.price, angle=0, movable=False,
-        #                                            pen=pen, hoverPen=hoverPen,
-        #                                            label=f'BUY-{o.price}-{o.volume - o.traded}', labelOpts={'color':'r'})
-        print(order)
         if order.status in (Status.NOTTRADED, Status.PARTTRADED):
             line = self.order_lines[order.vt_orderid]
             line.setPos(order.price)
@@ -1078,7 +1074,7 @@ class CandleChartWidget(QtWidgets.QWidget):
             line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
             line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
             line.label = pg.InfLineLabel(line,
-                                         text=f'{"↑" if order.direction == Direction.LONG else "↓"}{order.volume}@{order.price}',
+                                         text=f'{"↑" if order.direction == Direction.LONG else "↓"}{order.volume - order.traded}@{order.price}',
                                          color='r' if order.direction == Direction.LONG else 'g')
             candle_plot = self.chart.get_plot("candle")
             candle_plot.addItem(line)
@@ -1106,8 +1102,8 @@ class CandleChartWidget(QtWidgets.QWidget):
         info = self.trade_info
         trades = self.trades[self.chart._cursor._x]
         pos = self.ix_pos_map[self.chart._cursor._x]
-        pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]}\n'
-        trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price}' for t in trades)
+        pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
+        trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
         info.setText(pos_info_text + trade_info_text)
         info.show()
         view = self.chart._cursor._views['candle']

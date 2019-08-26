@@ -17,6 +17,9 @@ from vnpy.trader.engine import MainEngine
 from vnpy.event import EventEngine
 from vnpy.trader.object import HistoryRequest
 from vnpy.trader.constant import Interval
+from vnpy.app.realtime_monitor.ui.baseQtItems import MACurveItem
+from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
+from collections import defaultdict
 
 
 class StrategyReviewer(QtWidgets.QWidget):
@@ -168,17 +171,31 @@ class TradeChartDialog(QtWidgets.QDialog):
         tradeid = self.tradeChart.item(row, 0).text()
         symbol = self.trade_data[tradeid].symbol
         exchange = self.trade_data[tradeid].exchange
+        # gateway = self.trade_data[tradeid].gateway_name
         trade_data = [t for t in self.trade_data.values() if t.symbol == symbol and t.exchange == exchange]
         trade_data.sort(key=lambda t:t.time)
-        start = trade_data[0].time.replace(hour=0, minute=0, second=0)
-        end = trade_data[-1].time.replace(hour=23, minute=59, second=59)
+        time = self.trade_data[tradeid].time
+        start = time.replace(hour=0, minute=0, second=0) - dt.timedelta(minutes=120)
+        end = min(time.replace(hour=23, minute=59, second=59) + dt.timedelta(minutes=120),
+                  dt.datetime.now())
+        # start = trade_data[0].time.replace(hour=0, minute=0, second=0)
+        # end = trade_data[-1].time.replace(hour=23, minute=59, second=59)
 
-        req = HistoryRequest(symbol, exchange, start, end, Interval.HOUR)
-        gateway = self.main_engine.get_gateway('IB')
-        if gateway and gateway.api.status:
-            history_data = self.main_engine.get_gateway('IB').query_history(req)
+        history_data = database_manager.load_bar_data(symbol, exchange, Interval.MINUTE, start=start, end=end)
+
+        if len(history_data) > 0 and len(history_data)/ ((end - start).total_seconds() / 60) > 0.7:
             self.candleChart.update_history(history_data)
             self.candleChart.update_trades(trade_data)
+            self.candleChart.update_pos()
+        else:
+            req = HistoryRequest(symbol, exchange, start, end, Interval.MINUTE)
+            gateway = self.main_engine.get_gateway('IB')
+            if gateway and gateway.api.status:
+                history_data = gateway.query_history(req)
+                self.candleChart.update_history(history_data)
+                self.candleChart.update_trades(trade_data)
+                self.candleChart.update_pos()
+            database_manager.save_bar_data(history_data)
 
         self.candleChart.show()
 
@@ -189,6 +206,8 @@ class CandleChartDialog(QtWidgets.QDialog):
         super().__init__()
 
         self.dt_ix_map = {}
+        self.trades = defaultdict(list)
+        self.ix_pos_map = defaultdict(lambda :(0, 0))
         self.updated = False
         self.init_ui()
 
@@ -202,6 +221,7 @@ class CandleChartDialog(QtWidgets.QDialog):
         self.chart.add_plot("candle", hide_x_axis=True)
         self.chart.add_plot("volume", maximum_height=200)
         self.chart.add_item(CandleItem, "candle", "candle")
+        self.chart.add_item(MACurveItem, 'ma', 'candle')
         self.chart.add_item(VolumeItem, "volume", "volume")
         self.chart.add_cursor()
 
@@ -214,6 +234,19 @@ class CandleChartDialog(QtWidgets.QDialog):
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.chart)
         self.setLayout(vbox)
+
+        self.trade_info = trade_info = pg.TextItem(
+                "info",
+                anchor=(1, 0),
+                color=CURSOR_COLOR,
+                border=CURSOR_COLOR,
+                fill=BLACK_COLOR
+            )
+        trade_info.hide()
+        trade_info.setZValue(2)
+        trade_info.setFont(NORMAL_FONT)
+        candle_plot.addItem(trade_info)  # , ignoreBounds=True)
+        self.chart.scene().sigMouseMoved.connect(self.show_trade_info)
 
     def update_history(self, history: list):
         """"""
@@ -229,10 +262,10 @@ class CandleChartDialog(QtWidgets.QDialog):
 
         for trade in trades:
             for _time in self.dt_ix_map.keys():
-                if dt.timedelta(minutes=0) <= trade.time - _time < dt.timedelta(minutes=60):
-                    _time = _time
+                if dt.timedelta(minutes=0) <= trade.time - _time < dt.timedelta(minutes=1):
                     ix = self.dt_ix_map[_time]
 
+                    self.trades[ix].append(trade)
                     scatter = {
                         "pos": (ix, trade.price),
                         "data": 1,
@@ -251,6 +284,32 @@ class CandleChartDialog(QtWidgets.QDialog):
 
         self.trade_scatter.setData(trade_data)
 
+    def update_pos(self):
+        net_p = 0
+        net_value = 0
+        for ix in self.dt_ix_map.values():
+            trades = self.trades[ix]
+            for t in trades:
+                if t.direction == Direction.LONG:
+                    net_p += t.volume
+                    net_value += t.volume * t.price
+                else:
+                    net_p -= t.volume
+                    net_value -= t.volume * t.price
+            self.ix_pos_map[ix] = (net_p, net_value)
+
+    def show_trade_info(self, evt: tuple) -> None:
+        info = self.trade_info
+        trades = self.trades[self.chart._cursor._x]
+        pos = self.ix_pos_map[self.chart._cursor._x]
+        pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]}\n'
+        trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price}' for t in trades)
+        info.setText(pos_info_text + trade_info_text)
+        info.show()
+        view = self.chart._cursor._views['candle']
+        top_right = view.mapSceneToView(view.sceneBoundingRect().topRight())
+        info.setPos(top_right)
+
     def clear_data(self):
         """"""
         self.updated = False
@@ -258,6 +317,9 @@ class CandleChartDialog(QtWidgets.QDialog):
 
         self.dt_ix_map.clear()
         self.trade_scatter.clear()
+
+        self.trades = defaultdict(list)
+        self.ix_pos_map = defaultdict(lambda :(0, 0))
 
     def is_updated(self):
         """"""

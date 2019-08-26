@@ -70,6 +70,7 @@ STATUS_IB2VT = {
     "Cancelled": Status.CANCELLED,
     "PendingSubmit": Status.SUBMITTING,
     "PreSubmitted": Status.NOTTRADED,
+    "PendingCancel": Status.NOTTRADED
 }
 
 PRODUCT_VT2IB = {

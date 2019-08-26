@@ -594,7 +594,7 @@ class MACurveItem(ChartItem):
 
         # Draw volume body
         for p in self.periods:
-            sma=self._arrayManager.sma(p, True)
+            sma=self._arrayManager.ma(p, True)
             pre_ma = sma[-2]
             ma = sma[-1]
             self.mas[p][ix-1] = ma
