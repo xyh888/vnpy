@@ -17,7 +17,7 @@ from vnpy.trader.engine import MainEngine
 from vnpy.event import EventEngine
 from vnpy.trader.object import HistoryRequest
 from vnpy.trader.constant import Interval
-from vnpy.app.realtime_monitor.ui.baseQtItems import MACurveItem
+from vnpy.app.realtime_monitor.ui.baseQtItems import MACurveItem, MACDItem
 from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
 from collections import defaultdict
 
@@ -102,7 +102,7 @@ class StrategyReviewer(QtWidgets.QWidget):
                             net_pos += t.volume
                             net_value += t.volume * t.price
                     else:
-                        all_cost.append(f'#{vt_symbol}:{net_pos}@{net_value/net_pos if net_pos != 0 else net_value:.1f}')
+                        all_cost.append(f'#<{vt_symbol}>:{net_pos}@{net_value/net_pos if net_pos != 0 else net_value:.1f}')
 
                 return '\n'.join(all_cost)
 
@@ -246,9 +246,11 @@ class CandleChartDialog(QtWidgets.QDialog):
         # Create chart widget
         self.chart = ChartWidget()
         self.chart.add_plot("candle", hide_x_axis=True)
-        self.chart.add_plot("volume", maximum_height=200)
+        self.chart.add_plot("indicator", hide_x_axis=True, maximum_height=120)
+        self.chart.add_plot("volume", maximum_height=100)
         self.chart.add_item(CandleItem, "candle", "candle")
         self.chart.add_item(MACurveItem, 'ma', 'candle')
+        self.chart.add_item(MACDItem, 'macd', 'indicator')
         self.chart.add_item(VolumeItem, "volume", "volume")
         self.chart.add_cursor()
 
