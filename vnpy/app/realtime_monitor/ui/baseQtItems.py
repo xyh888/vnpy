@@ -660,8 +660,8 @@ class MACDItem(ChartItem):
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
         self.macds = defaultdict(dict)
-        self.br_max = np.inf
-        self.br_min = -np.inf
+        self.br_max = 0
+        self.br_min = 0
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -730,8 +730,8 @@ class MACDItem(ChartItem):
         min_ix = 0 if min_ix is None else min_ix
         max_ix = self.last_ix if max_ix is None else max_ix
 
-        min_v = np.inf
-        max_v = -np.inf
+        min_v = 0
+        max_v = 0
 
         for i in range(min_ix, max_ix):
             min_v = min(min_v, self.macds['diff'].get(i, min_v), self.macds['dea'].get(i, min_v), self.macds['macd'].get(i, min_v))
@@ -754,5 +754,5 @@ class MACDItem(ChartItem):
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
         self.macds = defaultdict(dict)
-        self.br_max = np.inf
-        self.br_min = -np.inf
+        self.br_max = 0
+        self.br_min = 0
