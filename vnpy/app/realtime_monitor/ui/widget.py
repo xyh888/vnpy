@@ -856,6 +856,7 @@ from vnpy.chart.base import UP_COLOR, DOWN_COLOR, CURSOR_COLOR, BLACK_COLOR, NOR
 from collections import defaultdict
 from vnpy.trader.object import OrderData
 from vnpy.trader.constant import Status
+from vnpy.trader.ui.widget import TickMonitor
 
 class CandleChartWidget(QtWidgets.QWidget):
     """
@@ -893,10 +894,12 @@ class CandleChartWidget(QtWidgets.QWidget):
 
         self.interval_combo = QtWidgets.QComboBox()
         self.interval_combo.addItems([Interval.MINUTE.value])
-
+        # self.tick_widget = TickMonitor(self.main_engine, self.event_engine)
         form = QtWidgets.QFormLayout()
         form.addRow("合约", self.contract_combo)
         form.addRow("周期", self.interval_combo)
+        # form.addRow()
+
 
         # Create chart widget
         self.chart = ChartWidget()
@@ -911,8 +914,10 @@ class CandleChartWidget(QtWidgets.QWidget):
 
         # Add scatter item for showing tradings
         self.trade_scatter = pg.ScatterPlotItem()
+        self.last_tick_line = pg.InfiniteLine(angle=0, label='')
         candle_plot = self.chart.get_plot("candle")
         candle_plot.addItem(self.trade_scatter)
+        candle_plot.addItem(self.last_tick_line)
 
         self.order_lines = defaultdict(pg.InfiniteLine)
 
@@ -972,6 +977,7 @@ class CandleChartWidget(QtWidgets.QWidget):
     def register_event(self):
         self.event_engine.register(EVENT_CONTRACT, self.add_contract)
         self.signal_update_bar.connect(self.chart.update_bar)
+        self.signal_update_bar.connect(self.update_tick_line)
         self.signal_update_trade.connect(self.update_trade)
         self.signal_update_order.connect(self.update_order)
 
@@ -1074,7 +1080,7 @@ class CandleChartWidget(QtWidgets.QWidget):
             line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
             line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
             line.label = pg.InfLineLabel(line,
-                                         text=f'{"↑" if order.direction == Direction.LONG else "↓"}{order.volume - order.traded}@{order.price}',
+                                         text=f'{order.type.value}:{"↑" if order.direction == Direction.LONG else "↓"}{order.volume - order.traded}@{order.price}',
                                          color='r' if order.direction == Direction.LONG else 'g')
             candle_plot = self.chart.get_plot("candle")
             candle_plot.addItem(line)
@@ -1083,6 +1089,17 @@ class CandleChartWidget(QtWidgets.QWidget):
                 line = self.order_lines[order.vt_orderid]
                 candle_plot = self.chart.get_plot("candle")
                 candle_plot.removeItem(line)
+
+    def update_tick_line(self, bar: BarData):
+        c = bar.close_price
+        o = bar.open_price
+        self.last_tick_line.setPos(bar.close_price)
+        if c >= o:
+            self.last_tick_line.setPen(pg.mkPen(color=UP_COLOR, width=PEN_WIDTH/2))
+            self.last_tick_line.label.setText(str(c), color=(255, 69, 0))
+        else:
+            self.last_tick_line.setPen(pg.mkPen(color=DOWN_COLOR, width=PEN_WIDTH / 2))
+            self.last_tick_line.label.setText(str(c), color=(173, 255, 47))
 
     def update_pos(self):
         net_p = 0

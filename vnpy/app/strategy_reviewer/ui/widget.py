@@ -69,22 +69,47 @@ class StrategyReviewer(QtWidgets.QWidget):
         class strategy:
             def __init__(self, name, datas):
                 self.name = name
-                self.datas = datas
+                self.raw_data = datas
+                self.raw_data.sort(key=lambda d: d.time)
+                self.datas = defaultdict(list)
+                for d in self.raw_data:
+                    self.datas[d.vt_symbol].append(d)
+
+
+            @property
+            def start_date(self):
+                return self.raw_data[0].time
+
+            @property
+            def end_date(self):
+                return self.raw_data[-1].time
+
+            @property
+            def trade_count(self):
+                return len(self.raw_data)
+
+            @property
+            def cost(self):
+                all_cost = []
+                for vt_symbol, trades in self.datas.items():
+                    net_pos = 0
+                    net_value = 0
+                    for t in trades:
+                        if t.direction == Direction.SHORT:
+                            net_pos -= t.volume
+                            net_value -= t.volume * t.price
+                        else:
+                            net_pos += t.volume
+                            net_value += t.volume * t.price
+                    else:
+                        all_cost.append(f'#{vt_symbol}:{net_pos}@{net_value/net_pos if net_pos != 0 else net_value:.1f}')
+
+                return '\n'.join(all_cost)
 
         l = []
         for n in strategies:
             datas = database_manager.load_trade_data(datetime(2000, 1, 1), datetime.now(), strategy=n)
             s = strategy(n, datas)
-            s.start_date = datas[0].time.date()
-            s.end_date = datas[-1].time.date()
-            s.profit_days = 0
-            s.loss_days = 0
-            s.total_net_pnl = 0
-            s.total_commission = 0
-            s.total_trade_count = 0
-            s.daily_net_pnl = 0
-            s.daily_commission = 0
-            s.daily_trade_count = 0
             l.append(s)
 
         return l
@@ -101,17 +126,19 @@ class StrategyMonitor(BaseMonitor):
         "name": {"display": "策略名称", "cell": BaseCell, "update": False},
         "start_date": {"display": "首个交易日", "cell": BaseCell, "update": False},
         "end_date": {"display": "最后交易日", "cell": BaseCell, "update": False},
+        "trade_count": {"display": "交易次数", "cell": BaseCell, "update": False},
+        "cost": {"display": "持仓成本", "cell": BaseCell, "update": False},
 
-        "profit_days": {"display": "盈利交易日", "cell": BaseCell, "update": False},
-        "loss_days": {"display": "亏损交易日", "cell": BaseCell, "update": False},
+        # "profit_days": {"display": "盈利交易日", "cell": BaseCell, "update": False},
+        # "loss_days": {"display": "亏损交易日", "cell": BaseCell, "update": False},
 
-        "total_net_pnl": {"display": "总净盈亏", "cell": BaseCell, "update": False},
-        "total_commission": {"display": "总手续", "cell": BaseCell, "update": False},
-        "total_trade_count": {"display": "总盈利次数", "cell": BaseCell, "update": False},
+        # "total_net_pnl": {"display": "总净盈亏", "cell": BaseCell, "update": False},
+        # "total_commission": {"display": "总手续", "cell": BaseCell, "update": False},
+        # "total_trade_count": {"display": "总盈利次数", "cell": BaseCell, "update": False},
 
-        "daily_net_pnl": {"display": "日均盈亏", "cell": BaseCell, "update": False},
-        "daily_commission": {"display": "日均手续费", "cell": BaseCell, "update": False},
-        "daily_trade_count": {"display": "日均成交笔数", "cell": BaseCell, "update": False},
+        # "daily_net_pnl": {"display": "日均盈亏", "cell": BaseCell, "update": False},
+        # "daily_commission": {"display": "日均手续费", "cell": BaseCell, "update": False},
+        # "daily_trade_count": {"display": "日均成交笔数", "cell": BaseCell, "update": False},
     }
 
 class TradeMonitor(BaseMonitor):
