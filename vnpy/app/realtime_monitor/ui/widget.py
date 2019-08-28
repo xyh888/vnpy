@@ -1005,7 +1005,6 @@ class CandleChartWidget(QtWidgets.QWidget):
         self.chart._items[self.current_indicator].update_history(self.chart._manager.get_all_bars())
 
 
-
     def add_contract(self, event: Event):
         c = event.data
         self.contract[c.vt_symbol] = c
