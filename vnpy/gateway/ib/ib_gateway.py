@@ -70,6 +70,10 @@ STATUS_IB2VT = {
     "Cancelled": Status.CANCELLED,
     "PendingSubmit": Status.SUBMITTING,
     "PreSubmitted": Status.NOTTRADED,
+    "PendingCancel": Status.NOTTRADED,
+    "ApiCancelled": Status.CANCELLED,
+    "ApiPending": Status.SUBMITTING,
+    "Inactive": Status.SUBMITTING
 }
 
 PRODUCT_VT2IB = {
@@ -181,7 +185,7 @@ class IbGateway(BaseGateway):
         """
         Query holding positions.
         """
-        pass
+        return self.api.query_position()
 
     def query_history(self, req: HistoryRequest):
         """"""
@@ -214,6 +218,9 @@ class IbApi(EWrapper):
         self.history_req = None
         self.history_condition = Condition()
         self.history_buf = []
+
+        self.position_condition = Condition()
+        self.position_buf = []
 
         self.client = IbClient(self)
         self.thread = Thread(target=self.client.run)
@@ -588,6 +595,41 @@ class IbApi(EWrapper):
         self.history_condition.notify()
         self.history_condition.release()
 
+    def position(self, account:str, contract:Contract, position:float,
+                 avgCost:float):
+        if contract.exchange:
+            exchange = EXCHANGE_IB2VT.get(contract.exchange, None)
+        elif contract.primaryExchange:
+            exchange = EXCHANGE_IB2VT.get(contract.primaryExchange, None)
+        else:
+            exchange = Exchange.HKFE   # FIXME: position with no exhange!!!!
+
+        if not exchange:
+            msg = f"存在不支持的交易所持仓{contract.conId} {contract.exchange} {contract.primaryExchange}"
+            self.gateway.write_log(msg)
+            return
+
+
+        pos = PositionData(
+            symbol=str(contract.conId),
+            exchange=exchange,
+            direction=Direction.NET,
+            volume=position,
+            price=avgCost,
+            # pnl=unrealizedPNL,
+            gateway_name=self.gateway_name,
+        )
+        self.position_buf.append(pos)
+        # self.gateway.on_position(pos)
+
+    def positionEnd(self):
+        """
+        Callback of position data finished.
+        """
+        self.position_condition.acquire()
+        self.position_condition.notify()
+        self.position_condition.release()
+
     def connect(self, host: str, port: int, clientid: int):
         """
         Connect to TWS.
@@ -607,6 +649,7 @@ class IbApi(EWrapper):
         executionFilter = ExecutionFilter()
         self.client.reqExecutions(self.reqid, executionFilter)
         self.client.reqOpenOrders()
+        self.client.reqPositions()
 
     def close(self):
         """
@@ -746,6 +789,19 @@ class IbApi(EWrapper):
         self.history_req = None
 
         return history
+
+    def query_position(self):
+        self.position_buf = []
+        self.client.reqPositions()
+
+        self.position_condition.acquire()
+        self.position_condition.wait()
+        self.position_condition.release()
+
+        position = self.position_buf
+        self.position_buf = []
+
+        return position
 
     @staticmethod
     def timedelta2durationStr(delta):
