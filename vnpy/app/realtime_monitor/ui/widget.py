@@ -951,11 +951,14 @@ class CandleChartWidget(QtWidgets.QWidget):
         vbox.addLayout(form)
         vbox.addWidget(self.chart)
         infoBox = QtWidgets.QVBoxLayout()
-        infoBox.addStretch(5)
+        infoBox.addStretch(1)
         infoBox.addLayout(self.info)
+        infoBox.addStretch(5)
         # infoBox.addWidget(self.tickSaleMonitor)
-        box.addLayout(vbox, 10)
+        box.addLayout(vbox)
         box.addLayout(infoBox)
+        box.setStretchFactor(vbox, 8)
+        box.setStretchFactor(infoBox, 1)
         self.setLayout(box)
 
 
@@ -1003,7 +1006,6 @@ class CandleChartWidget(QtWidgets.QWidget):
         self.current_indicator = indicator
         self.chart.add_item(self.indicators[indicator], indicator, "indicator")
         self.chart._items[self.current_indicator].update_history(self.chart._manager.get_all_bars())
-
 
     def add_contract(self, event: Event):
         c = event.data
