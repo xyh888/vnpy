@@ -9,9 +9,9 @@
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.event import (
-    EVENT_TICK, EVENT_ORDER, EVENT_TRADE, EVENT_LOG)
+    EVENT_TICK, EVENT_ORDER, EVENT_TRADE, EVENT_LOG, EVENT_CONTRACT)
 from vnpy.trader.constant import (Direction, Offset, OrderType,Interval)
-from vnpy.trader.object import (SubscribeRequest, OrderRequest, LogData)
+from vnpy.trader.object import (SubscribeRequest, OrderRequest, LogData, HistoryRequest)
 from vnpy.trader.utility import load_json, save_json
 from vnpy.trader.utility import BarGenerator, ArrayManager
 from vnpy.trader.ibdata import ibdata_client
@@ -100,14 +100,11 @@ class VisualEngine(BaseEngine):
         super().__init__(main_engine, event_engine, APP_NAME)
         self.bar_generator = None
         self.first = True
-
-        # self.register_event()
         self.init_engine()
 
     def init_engine(self):
         """"""
         self.write_log("市场数据可视化引擎启动")
-        # self.init_ibdata()
 
     def get_tick(self, vt_symbol: str):
         """"""
@@ -135,12 +132,26 @@ class VisualEngine(BaseEngine):
         event.data = log
         self.event_engine.put(event)
 
+    def get_historical_data(self, contract, end, bar_count, interval):
+        total_minutes = {Interval.MINUTE: 1, Interval.HOUR: 60}[interval] * bar_count
+        start = (end if end else dt.datetime.now()) - dt.timedelta(minutes=total_minutes)
+        req = HistoryRequest(contract.symbol, contract.exchange,
+                             start=start,
+                             end=end,
+                             interval=interval)
+
+        his_data = self.main_engine.query_history(req, contract.gateway_name)
+
+        return his_data
+
+    def get_trades(self, contract):
+        return [t for t in self.main_engine.get_all_trades() if t.vt_symbol == contract.vt_symbol]
+
+    def get_orders(self, contract):
+        return [o for o in self.main_engine.get_all_orders() if o.vt_symbol == contract.vt_symbol]
+
     def close(self):
         ...
-        # ibdata_client.deinit()
-        # for subscription in self.realtimebar_threads:
-        #     reqId = ibdata_client.subscription2reqId(subscription)
-        #     q = ibdata_client.result_queues[reqId]
-        #     q.put_nowait(0)
+
 
 
