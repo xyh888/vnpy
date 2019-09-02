@@ -8,6 +8,7 @@ from vnpy.trader.event import EVENT_TRADE, EVENT_ORDER, EVENT_LOG, EVENT_POSITIO
 from vnpy.trader.constant import Status, Direction
 from vnpy.trader.object import PositionData
 from vnpy.trader.utility import load_json, save_json
+from vnpy.trader.ui import QtWidgets
 
 
 APP_NAME = "KRRiskManager"
@@ -29,7 +30,7 @@ class KRRiskManagerEngine(BaseEngine):
         self.order_flow_clear = 1
         self.order_flow_timer = 0
 
-        self.order_size_limit = 3
+        self.order_size_limit = 5
 
         self.trade_count = 0
         self.trade_limit = 50
@@ -39,7 +40,7 @@ class KRRiskManagerEngine(BaseEngine):
 
         self.active_order_limit = 10
 
-        self.exposed_positions = defaultdict(PositionData)
+        self.exposed_positions = defaultdict(int)
         self.exposed_position_limit = 5
 
         self.load_setting()
@@ -57,6 +58,11 @@ class KRRiskManagerEngine(BaseEngine):
         """"""
         result = self.check_risk(req, gateway_name)
         if not result:
+            QtWidgets.QMessageBox.warning(
+                None, "KRRiskManager", f"交易风控触发, 拒绝<{gateway_name}>订单：\n"
+                f"#{req.vt_symbol}{'↓' if req.direction == Direction.SHORT else '↑'}{req.volume}@{req.price}",
+                QtWidgets.QMessageBox.Ok
+            )
             return ""
 
         return self._send_order(req, gateway_name)
@@ -134,11 +140,15 @@ class KRRiskManagerEngine(BaseEngine):
     def process_position_event(self, event: Event):
         position = event.data
 
-        self.exposed_positions[position.vt_positionid] = position
+        if position.direction == Direction.NET:
+            self.exposed_positions[position.vt_symbol] = position.volume
+        else:
+            self.exposed_positions[position.vt_symbol] = 0
+            self.write_log(f"exposed_positions暂时未支持{position.direction}类型，默认exposed_positions为0")
 
     def write_log(self, msg: str):
         """"""
-        log = LogData(msg=msg, gateway_name="RiskManager")
+        log = LogData(msg=msg, gateway_name="KRRiskManager")
         event = Event(type=EVENT_LOG, data=log)
         self.event_engine.put(event)
 
@@ -182,10 +192,10 @@ class KRRiskManagerEngine(BaseEngine):
                 f"当日{req.symbol}撤单次数{self.order_cancel_counts[req.symbol]}，超过限制{self.order_cancel_limit}")
             return False
 
-        for p_id, pos in self.exposed_positions:
+        for vt_symbol, pos in self.exposed_positions.items():
             vol = -req.volume if req.direction == Direction.SHORT else req.volume
-            if req.vt_symbol == pos.vt_symbol and pos.volume + vol >= self.exposed_position_limit:
-                self.write_log(f'{p_id}暴露头寸->{pos.volume}, 超过限制{self.exposed_position_limit}')
+            if req.vt_symbol == vt_symbol and abs(pos + vol) >= self.exposed_position_limit:
+                self.write_log(f'{gateway_name}订单使{vt_symbol}暴露头寸{pos}->{pos + vol}, 超过限制{self.exposed_position_limit}')
                 return False
 
         # Add flow count if pass all checks
