@@ -106,6 +106,9 @@ class ChartWidget(pg.PlotWidget):
         # Store plot object in dict
         self._plots[plot_name] = plot
 
+        self._layout.nextRow()
+        self._layout.addItem(plot)
+
     def add_item(
         self,
         item_class: Type[ChartItem],
@@ -122,8 +125,8 @@ class ChartWidget(pg.PlotWidget):
         plot.addItem(item)
         self._item_plot_map[item] = plot
 
-        self._layout.nextRow()
-        self._layout.addItem(plot)
+        # self._layout.nextRow()
+        # self._layout.addItem(plot)
 
     def get_plot(self, plot_name: str) -> pg.PlotItem:
         """
