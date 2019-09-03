@@ -98,6 +98,10 @@ class MarketDataChartWidget(ChartWidget):
         self.add_plot("indicator", hide_x_axis=True, maximum_height=120)
         self.add_plot("volume", maximum_height=100)
 
+        self.get_plot("candle").showGrid(True, True)
+        self.get_plot("indicator").showGrid(True, True)
+        self.get_plot("volume").showGrid(True, True)
+
         self.add_item(CandleItem, "candle", "candle")
 
         for i in INDICATOR:
