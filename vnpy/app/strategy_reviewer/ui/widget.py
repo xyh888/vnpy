@@ -17,7 +17,6 @@ from vnpy.trader.engine import MainEngine
 from vnpy.event import EventEngine
 from vnpy.trader.object import HistoryRequest
 from vnpy.trader.constant import Interval
-from vnpy.app.realtime_monitor.ui.baseQtItems import MACurveItem, MACDItem
 from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
 from collections import defaultdict
 
@@ -160,7 +159,7 @@ class TradeMonitor(BaseMonitor):
         "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
     }
 
-from vnpy.app.realtime_monitor.ui.baseQtItems import RealtimeChartWidget
+from vnpy.app.realtime_monitor.ui.baseQtItems import MarketDataChartWidget
 class TradeChartDialog(QtWidgets.QDialog):
     def __init__(self, main_engine, event_engine):
         super().__init__()
@@ -234,7 +233,7 @@ class CandleChartDialog(QtWidgets.QDialog):
         self.resize(1400, 800)
 
         # Create chart widget
-        self.chart = RealtimeChartWidget()
+        self.chart = MarketDataChartWidget()
         self.indicator_combo = QtWidgets.QComboBox()
         self.indicator_combo.addItems(self.chart.indicators.keys())
         self.indicator_combo.currentTextChanged.connect(self.chart.change_indicator)
