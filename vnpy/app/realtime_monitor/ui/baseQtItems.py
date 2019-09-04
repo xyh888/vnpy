@@ -166,15 +166,17 @@ class MarketDataChartWidget(ChartWidget):
 
     def show_trade_info(self, evt: tuple) -> None:
         info = self.trade_info
+        info.hide()
         trades = self.trades[self._cursor._x]
         pos = self.ix_pos_map[self._cursor._x]
         pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
         trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
         info.setText(pos_info_text + trade_info_text)
-        info.show()
         view = self._cursor._views['candle']
-        top_right = view.mapSceneToView(view.sceneBoundingRect().topRight())
-        info.setPos(top_right)
+        rect = view.sceneBoundingRect()
+        top_middle = view.mapSceneToView(QPointF(rect.right() - rect.width()/2, rect.top()))
+        info.setPos(top_middle)
+        info.show()
 
     def update_all(self, history, trades, orders):
         self.update_history(history)

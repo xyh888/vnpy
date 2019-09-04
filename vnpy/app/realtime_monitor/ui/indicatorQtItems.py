@@ -65,10 +65,20 @@ class MACurveItem(ChartItem):
             self.mas[p][ix-1] = ma
             if np.isnan(pre_ma) or np.isnan(ma):
                 continue
-            line = QtCore.QLine()
-            line.setLine(ix-2, sma[-2], ix-1, sma[-1])
-            painter.setPen(self.MA_COLORS[p])
-            painter.drawLine(line)
+            # line = QtCore.QLine()
+            # line.setLine(ix-2, sma[-2], ix-1, sma[-1])
+            # painter.setPen(self.MA_COLORS[p])
+            # painter.drawLine(line)
+            sp = QtCore.QPointF(ix-2, sma[-2])
+            # path = QtGui.QPainterPath(sp)
+            ep = QtCore.QPointF(ix-1, sma[-1])
+            # c1 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y()+ep.y())/2)
+            # c2 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y()+ep.y())/2)
+            # path.cubicTo(c1, c2, ep)
+            # painter.setPen(self.MA_COLORS[p])
+            # painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+            # painter.drawPath(path)
+            drawPath(painter, sp, ep, self.MA_COLORS[p])
 
         # Finish
         painter.end()
@@ -152,24 +162,22 @@ class MACDItem(ChartItem):
         self.macds['dea'][ix-1] = dea[-1]
         self.macds['macd'][ix-1] = macd[-1]
         if not (np.isnan(diff[-2]) or np.isnan(dea[-2]) or np.isnan(macd[-1])):
-            diff_line = QtCore.QLine()
-            dea_line = QtCore.QLine()
-            diff_line.setLine(ix - 2, diff[-2], ix - 1, diff[-1])
-            dea_line.setLine(ix - 2, dea[-2], ix - 1, dea[-1])
             macd_bar = QtCore.QRectF(ix - 1 - BAR_WIDTH, 0,
                                      BAR_WIDTH * 2, macd[-1])
-
-            painter.setPen(self.MACD_COLORS['dea'])
-            painter.drawLine(dea_line)
-            painter.setPen(self.MACD_COLORS['diff'])
-            painter.drawLine(diff_line)
-
+            painter.setPen(pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH))
             if macd[-1] > 0:
                 painter.setBrush(self.MACD_COLORS['macd']['up'])
             else:
                 painter.setBrush(self.MACD_COLORS['macd']['down'])
-
             painter.drawRect(macd_bar)
+
+            diff_sp = QtCore.QPointF(ix - 2, diff[-2])
+            diff_ep = QtCore.QPointF(ix - 1, diff[-1])
+            drawPath(painter, diff_sp, diff_ep, self.MACD_COLORS['diff'])
+
+            dea_sp = QtCore.QPointF(ix - 2, dea[-2])
+            dea_ep = QtCore.QPointF(ix - 1, dea[-1])
+            drawPath(painter, dea_sp, dea_ep, self.MACD_COLORS['dea'])
 
         # Finish
         painter.end()
@@ -270,33 +278,27 @@ class INCItem(ChartItem):
         self.incs['down'][ix-1] = -std[-1]
         self.incs['multiple'][ix-1] = multiple[-1]
         if not (np.isnan(std[-2]*std[-1]*inc[-2]*inc[-1])):
-            up_line = QtCore.QLine()
-            down_line = QtCore.QLine()
-            up_line.setLine(ix - 2, std[-2], ix - 1, std[-1])
-            down_line.setLine(ix - 2, -std[-2], ix - 1, -std[-1])
             multiple_bar = QtCore.QRectF(ix - 1 - BAR_WIDTH, 0,
                                          BAR_WIDTH * 2, inc[-1])
-
-            painter.setPen(self.INC_COLORS['up'])
-            painter.drawLine(up_line)
-            painter.setPen(self.INC_COLORS['down'])
-            painter.drawLine(down_line)
-
             painter.setPen(pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH/2))
-
             if multiple[-1] >= 0:
                 ud = 'up'
             else:
                 ud = 'down'
-
             if abs(multiple[-1]) >= self.INC_PARAMS[1]:
                 cp = 'gte'
             else:
                 cp = 'lt'
-
             painter.setBrush(self.INC_COLORS['inc'][f'{ud}_{cp}'])
-
             painter.drawRect(multiple_bar)
+
+            up_sp = QtCore.QPointF(ix - 2, std[-2])
+            up_ep = QtCore.QPointF(ix - 1, std[-1])
+            drawPath(painter, up_sp, up_ep, self.INC_COLORS['up'])
+
+            down_sp = QtCore.QPointF(ix - 2, -std[-2])
+            down_ep = QtCore.QPointF(ix - 1, -std[-1])
+            drawPath(painter, down_sp, down_ep, self.INC_COLORS['down'])
 
         # Finish
         painter.end()
@@ -397,10 +399,9 @@ class RSICurveItem(ChartItem):
             self.br_max = max(self.br_max, rsi_[-1])
             self.br_min = min(self.br_min, rsi_[-1])
 
-            line = QtCore.QLine()
-            line.setLine(ix-2, rsi_[-2], ix-1, rsi_[-1])
-            painter.setPen(self.RSI_COLORS[p])
-            painter.drawLine(line)
+            rsi_sp = QtCore.QPointF(ix-2, rsi_[-2])
+            rsi_ep = QtCore.QPointF(ix-1, rsi_[-1])
+            drawPath(painter, rsi_sp, rsi_ep, self.RSI_COLORS[p])
 
         # Finish
         painter.end()
@@ -455,6 +456,15 @@ class RSICurveItem(ChartItem):
         self.rsis = defaultdict(dict)
         self.br_max = -np.inf
         self.br_min = np.inf
+
+def drawPath(painter, sp, ep, color):
+    path = QtGui.QPainterPath(sp)
+    c1 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y() + ep.y()) / 2)
+    c2 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y() + ep.y()) / 2)
+    path.cubicTo(c1, c2, ep)
+    painter.setPen(color)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    painter.drawPath(path)
 
 
 INDICATOR = [MACurveItem, MACDItem, INCItem, RSICurveItem]
