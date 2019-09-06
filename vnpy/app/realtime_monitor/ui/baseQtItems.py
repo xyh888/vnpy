@@ -98,6 +98,10 @@ class MarketDataChartWidget(ChartWidget):
         self.add_plot("indicator", hide_x_axis=True, maximum_height=120)
         self.add_plot("volume", maximum_height=100)
 
+        self.get_plot("candle").showGrid(True, True)
+        self.get_plot("indicator").showGrid(True, True)
+        self.get_plot("volume").showGrid(True, True)
+
         self.add_item(CandleItem, "candle", "candle")
 
         for i in INDICATOR:
@@ -162,15 +166,17 @@ class MarketDataChartWidget(ChartWidget):
 
     def show_trade_info(self, evt: tuple) -> None:
         info = self.trade_info
+        info.hide()
         trades = self.trades[self._cursor._x]
         pos = self.ix_pos_map[self._cursor._x]
         pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
         trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
         info.setText(pos_info_text + trade_info_text)
-        info.show()
         view = self._cursor._views['candle']
-        top_right = view.mapSceneToView(view.sceneBoundingRect().topRight())
-        info.setPos(top_right)
+        rect = view.sceneBoundingRect()
+        top_middle = view.mapSceneToView(QPointF(rect.right() - rect.width()/2, rect.top()))
+        info.setPos(top_middle)
+        info.show()
 
     def update_all(self, history, trades, orders):
         self.update_history(history)
@@ -246,12 +252,19 @@ class MarketDataChartWidget(ChartWidget):
         """"""
         trade_scatters = []
         for trade in trades:
-            ix = self.dt_ix_map.get(trade.time.replace(second=0))
+            # ix = self.dt_ix_map.get(trade.time.replace(second=0))
 
-            if ix is not None:
-                self.trades[ix].append(trade)
-                scatter = self.__trade2scatter(ix, trade)
-                trade_scatters.append(scatter)
+            for _dt, ix in self.dt_ix_map.items():
+                if trade.time < _dt:
+                    self.trades[ix-1].append(trade)
+                    scatter = self.__trade2scatter(ix-1, trade)
+                    trade_scatters.append(scatter)
+                    break
+
+            # if ix is not None:
+            #     self.trades[ix].append(trade)
+            #     scatter = self.__trade2scatter(ix, trade)
+            #     trade_scatters.append(scatter)
 
         self.trade_scatter.setData(trade_scatters)
 
@@ -262,6 +275,14 @@ class MarketDataChartWidget(ChartWidget):
             scatter = self.__trade2scatter(ix, trade)
             self.__trade2pos(ix, trade)
             self.trade_scatter.addPoints([scatter])
+
+        for _dt, ix in self.dt_ix_map.items():
+            if trade.time < _dt:
+                self.trades[ix - 1].append(trade)
+                scatter = self.__trade2scatter(ix - 1, trade)
+                self.__trade2pos(ix-1, trade)
+                self.trade_scatter.addPoints([scatter])
+                break
 
     def update_orders(self, orders: list):
         for o in orders:

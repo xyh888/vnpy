@@ -20,6 +20,7 @@ from vnpy.chart.base import BAR_WIDTH, PEN_WIDTH, UP_COLOR, DOWN_COLOR, CURSOR_C
 from vnpy.trader.utility import ArrayManager, BarGenerator
 from typing import Tuple, Callable
 from collections import defaultdict
+from vnpy.trader.utility import load_json
 
 import talib
 
@@ -27,6 +28,7 @@ import talib
 class MACurveItem(ChartItem):
     name = 'ma'
     plot_name = 'candle'
+    MA_PARAMS = [5, 10, 20, 30, 60]
     MA_COLORS = {5: pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
                  10: pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH),
                  20: pg.mkPen(color=(218, 112, 214), width=PEN_WIDTH),
@@ -35,11 +37,22 @@ class MACurveItem(ChartItem):
     def __init__(self, manager: BarManager):
         """"""
         super().__init__(manager)
-        self.periods = [5, 10, 20, 30, 60]
-        self._arrayManager = ArrayManager(max(self.periods) + 1)
+        # self.periods = [5, 10, 20, 30, 60]
+        self.init_setting()
+        self._arrayManager = ArrayManager(max(self.MA_PARAMS) + 1)
         self.mas = defaultdict(dict)
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        self.MA_PARAMS = setting.get('params', self.MA_PARAMS)
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            pen_colors = {}
+            for p in self.MA_PARAMS:
+                pen_colors[p] = pg.mkPen(**pen_settings[str(p)])
+            self.MA_COLORS = pen_colors
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -58,17 +71,17 @@ class MACurveItem(ChartItem):
         painter = QtGui.QPainter(ma_picture)
 
         # Draw volume body
-        for p in self.periods:
+        for p in self.MA_PARAMS:
             sma=self._arrayManager.ma(p, True)
             pre_ma = sma[-2]
             ma = sma[-1]
             self.mas[p][ix-1] = ma
             if np.isnan(pre_ma) or np.isnan(ma):
                 continue
-            line = QtCore.QLine()
-            line.setLine(ix-2, sma[-2], ix-1, sma[-1])
-            painter.setPen(self.MA_COLORS[p])
-            painter.drawLine(line)
+
+            sp = QtCore.QPointF(ix-2, sma[-2])
+            ep = QtCore.QPointF(ix-1, sma[-1])
+            drawPath(painter, sp, ep, self.MA_COLORS[p])
 
         # Finish
         painter.end()
@@ -108,7 +121,7 @@ class MACurveItem(ChartItem):
         Clear all data in the item.
         """
         super().clear_all()
-        self._arrayManager = ArrayManager(max(self.periods) + 1)
+        self._arrayManager = ArrayManager(max(self.MA_PARAMS) + 1)
         self.mas = defaultdict(dict)
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
@@ -123,12 +136,26 @@ class MACDItem(ChartItem):
     def __init__(self, manager: BarManager):
         """"""
         super().__init__(manager)
+        self.init_setting()
         self._arrayManager = ArrayManager(150)
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
         self.macds = defaultdict(dict)
         self.br_max = 0
         self.br_min = 0
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        self.MACD_PARAMS = setting.get('params', self.MACD_PARAMS)
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            self.MACD_COLORS['diff'] = pg.mkPen(**pen_settings['diff'])
+            self.MACD_COLORS['dea'] = pg.mkPen(**pen_settings['dea'])
+
+        if 'brush' in setting:
+            brush_settings = setting['brush']
+            self.MACD_COLORS['macd'] = {'up': pg.mkBrush(**brush_settings['macd']['up']),
+                                        'down': pg.mkBrush(**brush_settings['macd']['down'])}
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -152,24 +179,22 @@ class MACDItem(ChartItem):
         self.macds['dea'][ix-1] = dea[-1]
         self.macds['macd'][ix-1] = macd[-1]
         if not (np.isnan(diff[-2]) or np.isnan(dea[-2]) or np.isnan(macd[-1])):
-            diff_line = QtCore.QLine()
-            dea_line = QtCore.QLine()
-            diff_line.setLine(ix - 2, diff[-2], ix - 1, diff[-1])
-            dea_line.setLine(ix - 2, dea[-2], ix - 1, dea[-1])
             macd_bar = QtCore.QRectF(ix - 1 - BAR_WIDTH, 0,
                                      BAR_WIDTH * 2, macd[-1])
-
-            painter.setPen(self.MACD_COLORS['dea'])
-            painter.drawLine(dea_line)
-            painter.setPen(self.MACD_COLORS['diff'])
-            painter.drawLine(diff_line)
-
+            painter.setPen(pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH))
             if macd[-1] > 0:
                 painter.setBrush(self.MACD_COLORS['macd']['up'])
             else:
                 painter.setBrush(self.MACD_COLORS['macd']['down'])
-
             painter.drawRect(macd_bar)
+
+            diff_sp = QtCore.QPointF(ix - 2, diff[-2])
+            diff_ep = QtCore.QPointF(ix - 1, diff[-1])
+            drawPath(painter, diff_sp, diff_ep, self.MACD_COLORS['diff'])
+
+            dea_sp = QtCore.QPointF(ix - 2, dea[-2])
+            dea_ep = QtCore.QPointF(ix - 1, dea[-1])
+            drawPath(painter, dea_sp, dea_ep, self.MACD_COLORS['dea'])
 
         # Finish
         painter.end()
@@ -236,12 +261,28 @@ class INCItem(ChartItem):
     def __init__(self, manager: BarManager):
         """"""
         super().__init__(manager)
+        self.init_setting()
         self._arrayManager = ArrayManager(150)
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
         self.incs = defaultdict(dict)
         self.br_max = 0
         self.br_min = 0
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        self.INC_PARAMS = setting.get('params', self.INC_PARAMS)
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            self.INC_COLORS['up'] = pg.mkPen(**pen_settings['up'])
+            self.INC_COLORS['down'] = pg.mkPen(**pen_settings['down'])
+
+        if 'brush' in setting:
+            brush_settings = setting['brush']
+            self.INC_COLORS['inc'] = {'up_gte': pg.mkBrush(**brush_settings['up_gte']),
+                                      'up_lt': pg.mkBrush(**brush_settings['up_lt']),
+                                      'down_gte': pg.mkBrush(**brush_settings['down_gte']),
+                                      'down_lt': pg.mkBrush(**brush_settings['down_lt'])}
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -270,33 +311,27 @@ class INCItem(ChartItem):
         self.incs['down'][ix-1] = -std[-1]
         self.incs['multiple'][ix-1] = multiple[-1]
         if not (np.isnan(std[-2]*std[-1]*inc[-2]*inc[-1])):
-            up_line = QtCore.QLine()
-            down_line = QtCore.QLine()
-            up_line.setLine(ix - 2, std[-2], ix - 1, std[-1])
-            down_line.setLine(ix - 2, -std[-2], ix - 1, -std[-1])
             multiple_bar = QtCore.QRectF(ix - 1 - BAR_WIDTH, 0,
                                          BAR_WIDTH * 2, inc[-1])
-
-            painter.setPen(self.INC_COLORS['up'])
-            painter.drawLine(up_line)
-            painter.setPen(self.INC_COLORS['down'])
-            painter.drawLine(down_line)
-
             painter.setPen(pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH/2))
-
             if multiple[-1] >= 0:
                 ud = 'up'
             else:
                 ud = 'down'
-
             if abs(multiple[-1]) >= self.INC_PARAMS[1]:
                 cp = 'gte'
             else:
                 cp = 'lt'
-
             painter.setBrush(self.INC_COLORS['inc'][f'{ud}_{cp}'])
-
             painter.drawRect(multiple_bar)
+
+            up_sp = QtCore.QPointF(ix - 2, std[-2])
+            up_ep = QtCore.QPointF(ix - 1, std[-1])
+            drawPath(painter, up_sp, up_ep, self.INC_COLORS['up'])
+
+            down_sp = QtCore.QPointF(ix - 2, -std[-2])
+            down_ep = QtCore.QPointF(ix - 1, -std[-1])
+            drawPath(painter, down_sp, down_ep, self.INC_COLORS['down'])
 
         # Finish
         painter.end()
@@ -355,19 +390,29 @@ class INCItem(ChartItem):
 class RSICurveItem(ChartItem):
     name = 'rsi'
     plot_name = 'indicator'
+    RSI_PARAMS = [6, 12, 24]
     RSI_COLORS = {6: pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
                  12: pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH),
                  24: pg.mkPen(color=(218, 112, 214), width=PEN_WIDTH)}
     def __init__(self, manager: BarManager):
         """"""
         super().__init__(manager)
-        self.periods = [6, 12, 24]
+        # self.periods = [6, 12, 24]
+        self.init_setting()
         self._arrayManager = ArrayManager(150)
         self.rsis = defaultdict(dict)
         self.last_ix = 0
         self.br_max = -np.inf
         self.br_min = np.inf
         self.last_picture = QtGui.QPicture()
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        self.RSI_PARAMS = setting.get('params', self.RSI_PARAMS)
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            for p in self.RSI_PARAMS:
+                self.RSI_COLORS[p] = pg.mkPen(**pen_settings[str(p)])
 
     def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
         """"""
@@ -386,7 +431,7 @@ class RSICurveItem(ChartItem):
         painter = QtGui.QPainter(rsi_picture)
 
         # Draw volume body
-        for p in self.periods:
+        for p in self.RSI_PARAMS:
             rsi_=self._arrayManager.rsi(p, True)
             pre_rsi = rsi_[-2]
             rsi = rsi_[-1]
@@ -397,10 +442,9 @@ class RSICurveItem(ChartItem):
             self.br_max = max(self.br_max, rsi_[-1])
             self.br_min = min(self.br_min, rsi_[-1])
 
-            line = QtCore.QLine()
-            line.setLine(ix-2, rsi_[-2], ix-1, rsi_[-1])
-            painter.setPen(self.RSI_COLORS[p])
-            painter.drawLine(line)
+            rsi_sp = QtCore.QPointF(ix-2, rsi_[-2])
+            rsi_ep = QtCore.QPointF(ix-1, rsi_[-1])
+            drawPath(painter, rsi_sp, rsi_ep, self.RSI_COLORS[p])
 
         # Finish
         painter.end()
@@ -430,7 +474,7 @@ class RSICurveItem(ChartItem):
         min_v = np.inf
         max_v = -np.inf
 
-        p = self.periods[0]
+        p = self.RSI_PARAMS[0]
         for i in range(min_ix, max_ix):
             min_v = min(min_v, self.rsis[p].get(i, min_v), self.rsis[p].get(i, min_v))
             max_v = max(max_v, self.rsis[p].get(i, max_v), self.rsis[p].get(i, max_v))
@@ -456,5 +500,14 @@ class RSICurveItem(ChartItem):
         self.br_max = -np.inf
         self.br_min = np.inf
 
+def drawPath(painter, sp, ep, color):
+    path = QtGui.QPainterPath(sp)
+    c1 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y() + ep.y()) / 2)
+    c2 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y() + ep.y()) / 2)
+    path.cubicTo(c1, c2, ep)
+    painter.setPen(color)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    painter.drawPath(path)
 
+VISUAL_SETTING = load_json('visual_setting.json')
 INDICATOR = [MACurveItem, MACDItem, INCItem, RSICurveItem]

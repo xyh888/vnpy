@@ -19,6 +19,7 @@ from vnpy.trader.object import HistoryRequest
 from vnpy.trader.constant import Interval
 from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
 from collections import defaultdict
+from ..engine import APP_NAME
 
 
 class StrategyReviewer(QtWidgets.QWidget):
@@ -26,6 +27,7 @@ class StrategyReviewer(QtWidgets.QWidget):
         super().__init__()
         self.main_engine = main_engine
         self.event_engine = event_engine
+        self.review_engine = main_engine.get_engine(APP_NAME)
         self.init_ui()
 
     def init_ui(self):
@@ -43,8 +45,8 @@ class StrategyReviewer(QtWidgets.QWidget):
 
         self.setLayout(vbox)
 
-        data = self.calc()
-        self.update_data(data)
+        self.strategies = self.calc()
+        self.update_data(self.strategies)
 
     def clear_data(self):
         """"""
@@ -73,7 +75,6 @@ class StrategyReviewer(QtWidgets.QWidget):
                 self.datas = defaultdict(list)
                 for d in self.raw_data:
                     self.datas[d.vt_symbol].append(d)
-
 
             @property
             def start_date(self):
@@ -117,8 +118,21 @@ class StrategyReviewer(QtWidgets.QWidget):
         self.trade.clear_all()
         strategy_name = self.table.item(row, 0).text()
         self.trade.update_trades(strategy_name)
-
         self.trade.show()
+
+    # def show_daily_pnl(self, row, column):
+    #     strategy_name = self.table.item(row, 0).text()
+    #     strategy = self.strategies[strategy_name]
+    #     for vt_symbol, datas in strategy.datas.items():
+    #         start = datas[0].time
+    #         end = datas[-1].time
+    #         symbol, exchange = vt_symbol.split('.')
+    #         his_data = self.review_engine.get_daily_history(symbol, exchange, start, end)
+    #         for bar in his_data:
+    #             for trade in datas:
+    #             if bar.datetime.date()
+
+
 
 class StrategyMonitor(BaseMonitor):
     headers = {
@@ -140,6 +154,18 @@ class StrategyMonitor(BaseMonitor):
         # "daily_trade_count": {"display": "日均成交笔数", "cell": BaseCell, "update": False},
     }
 
+class CheckCell(BaseCell):
+    def __init__(self, content, data):
+        super().__init__(content, data)
+
+    def set_content(self, content, data):
+        self.setText(str(content))
+        self._data = data
+        # if self._data:
+        self.setCheckState(QtCore.Qt.Checked)
+        # else:
+        #     self.setCheckState(QtCore.Qt.Unchecked)
+
 class TradeMonitor(BaseMonitor):
     """
     Monitor for trade data.
@@ -147,7 +173,8 @@ class TradeMonitor(BaseMonitor):
     data_key = 'tradeid'
     sorting = True
     headers = {
-        "tradeid": {"display": "成交号 ", "cell": BaseCell, "update": False},
+        # "check": {"display": "包含", "cell": CheckCell, "update": False},
+        "tradeid": {"display": "成交号 ", "cell": CheckCell, "update": False},
         "orderid": {"display": "委托号", "cell": BaseCell, "update": False},
         "symbol": {"display": "代码", "cell": BaseCell, "update": False},
         "exchange": {"display": "交易所", "cell": EnumCell, "update": False},
@@ -167,6 +194,7 @@ class TradeChartDialog(QtWidgets.QDialog):
         self.event_engine = event_engine
         self.strategy = ""
         self.trade_data = {}
+        self.available_tradeid = set()
         self.init_ui()
 
     def init_ui(self):
@@ -174,20 +202,56 @@ class TradeChartDialog(QtWidgets.QDialog):
         self.resize(900, 600)
 
         self.tradeChart = TradeMonitor(self.main_engine, self.event_engine)
+        self.cost_text = QtWidgets.QTextEdit()
         self.candleChart = CandleChartDialog()
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.tradeChart)
+        vbox.addWidget(self.cost_text)
+        vbox.setStretchFactor(self.tradeChart, 8)
+        vbox.setStretchFactor(self.cost_text, 2)
         self.setLayout(vbox)
 
         self.tradeChart.cellDoubleClicked.connect(self.show_candle_chart)
+        self.tradeChart.cellClicked.connect(self.check_tradeid)
 
     def update_trades(self, strategy):
         trade_data = database_manager.load_trade_data(datetime(2000, 1, 1), datetime.now(), strategy=strategy)
         self.strategy = strategy
+        self.available_tradeid = set()
         for t in trade_data:
             self.trade_data[t.tradeid] = t
             self.tradeChart.insert_new_row(t)
+            self.available_tradeid.add(t.tradeid)
+
+        self.show_cost()
+
+    def check_tradeid(self, r, c):
+        if c == 0:
+            cell = self.tradeChart.item(r, c)
+            if cell.checkState():
+                cell.setCheckState(QtCore.Qt.Unchecked)
+                self.available_tradeid.remove(cell.text())
+            else:
+                cell.setCheckState(QtCore.Qt.Checked)
+                self.available_tradeid.add(cell.text())
+
+            self.show_cost()
+
+    def show_cost(self):
+        all_cost = defaultdict(lambda: [0, 0, 0])
+        for t_id in self.available_tradeid:
+            t = self.trade_data[t_id]
+            all_cost[t.vt_symbol][2] += 1
+            if t.direction == Direction.SHORT:
+                all_cost[t.vt_symbol][0] -= t.volume
+                all_cost[t.vt_symbol][1] -= t.volume * t.price
+            else:
+                all_cost[t.vt_symbol][0] += t.volume
+                all_cost[t.vt_symbol][1] += t.volume * t.price
+
+        result = '\n'.join([f'#<{s}>:{p[0]}@{p[1] / p[0] if p[0] != 0 else p[1]:.1f} Total:{p[2]}' for s, p in all_cost.items()])
+        self.cost_text.setText(result)
 
     def clear_all(self):
         self.strategy = ""
@@ -249,3 +313,29 @@ class CandleChartDialog(QtWidgets.QDialog):
 
     def update_all(self, history, trades, orders):
         self.chart.update_all(history, trades, orders)
+
+
+class DailyResultChart(QtWidgets.QDialog):
+    def __init__(self):
+        """"""
+        super().__init__()
+        self.init_ui()
+
+    def init_ui(self):
+        """"""
+        self.setWindowTitle("策略K线图表")
+        self.resize(1400, 800)
+
+        # Create chart widget
+        self.pnlChart = pg.PlotCurveItem()
+        # Set layout
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addWidget(self.pnlChart)
+        self.setLayout(vbox)
+
+    def clear_all(self):
+        self.pnlChart.clear()
+
+    # def update_all(self, history, trades, orders):
+    #     self.chart.update_all(history, trades, orders)
+
