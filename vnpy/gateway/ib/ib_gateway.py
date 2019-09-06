@@ -785,7 +785,7 @@ class IbApi(EWrapper):
         self.history_condition.wait()
         self.history_condition.release()
 
-        history = self.history_buf
+        history = [h for h in self.history_buf if h.datetime >=req.start]
         self.history_buf = []       # Create new buffer list
         self.history_req = None
 
