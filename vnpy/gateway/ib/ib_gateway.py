@@ -44,7 +44,7 @@ from vnpy.trader.constant import (
     Interval
 )
 
-ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT"}
+ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT", OrderType.STOP: "STP LMT"}
 ORDERTYPE_IB2VT = {v: k for k, v in ORDERTYPE_VT2IB.items()}
 
 DIRECTION_VT2IB = {Direction.LONG: "BUY", Direction.SHORT: "SELL"}
@@ -388,7 +388,7 @@ class IbApi(EWrapper):
             symbol=str(ib_contract.conId),
             exchange=EXCHANGE_IB2VT.get(
                 ib_contract.exchange, ib_contract.exchange),
-            type=ORDERTYPE_IB2VT[ib_order.orderType],
+            type=ORDERTYPE_IB2VT.get(ib_order.orderType,ib_order.orderType),
             orderid=orderid,
             direction=DIRECTION_IB2VT[ib_order.action],
             price=ib_order.lmtPrice,
