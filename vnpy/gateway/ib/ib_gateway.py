@@ -44,7 +44,7 @@ from vnpy.trader.constant import (
     Interval
 )
 
-ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT", OrderType.STOP: "STP LMT"}
+ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT", OrderType.STOP: "STP"}
 ORDERTYPE_IB2VT = {v: k for k, v in ORDERTYPE_VT2IB.items()}
 
 DIRECTION_VT2IB = {Direction.LONG: "BUY", Direction.SHORT: "SELL"}
@@ -364,10 +364,17 @@ class IbApi(EWrapper):
 
         orderid = str(orderId)
         order = self.orders.get(orderid, None)
-        order.status = STATUS_IB2VT[status]  # FIXME: PendingCancel is not included
-        order.traded = filled
+        if order:
+            # if order.type == OrderType.STOP:
+            #     if order.status == Status.SUBMITTING and status == 'PreSubmitted':
+            #         order.price == getattr(order, 'aux_price', order.price)
+            #     elif order.status == Status.NOTTRADED and status == 'Submitted':
+            #         order.price == getattr(order, 'lmt_price', order.price)
 
-        self.gateway.on_order(copy(order))
+            order.status = STATUS_IB2VT[status]  # FIXME: PendingCancel is not included
+            order.traded = filled
+
+            self.gateway.on_order(copy(order))
 
     def openOrder(  # pylint: disable=invalid-name
         self,
@@ -384,11 +391,18 @@ class IbApi(EWrapper):
         )
 
         orderid = str(orderId)
+        if ib_order.orderType in ['LMT', 'MKT']:
+            orderType = ORDERTYPE_IB2VT[ib_order.orderType]
+        elif ib_order.orderType.startswith('STP'):
+            orderType = ORDERTYPE_IB2VT['STP']
+        else:
+            orderType = ib_order.orderType
+
         order = OrderData(
             symbol=str(ib_contract.conId),
             exchange=EXCHANGE_IB2VT.get(
                 ib_contract.exchange, ib_contract.exchange),
-            type=ORDERTYPE_IB2VT.get(ib_order.orderType,ib_order.orderType),
+            type=orderType,
             orderid=orderid,
             direction=DIRECTION_IB2VT[ib_order.action],
             price=ib_order.lmtPrice,

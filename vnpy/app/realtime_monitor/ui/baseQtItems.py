@@ -322,13 +322,14 @@ class MarketDataChartWidget(ChartWidget):
 
             if line not in candle_plot.items:
                 candle_plot.addItem(line)
-            line.setPos(order.price)
+
             line.setAngle(0)
-            line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
-            line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
             line.label = pg.InfLineLabel(line,
                                          text=f'{order.type.value}:{"↑" if order.direction == Direction.LONG else "↓"}{order.volume - order.traded}@{order.price}',
                                          color='r' if order.direction == Direction.LONG else 'g')
+            line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
+            line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
+            line.setPos(order.price)
 
         elif order.status in (Status.ALLTRADED, Status.CANCELLED, Status.REJECTED):
             if order.vt_orderid in self.order_lines:
