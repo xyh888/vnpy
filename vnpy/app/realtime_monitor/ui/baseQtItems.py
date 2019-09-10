@@ -84,7 +84,7 @@ class MarketDataChartWidget(ChartWidget):
         super().__init__(parent)
         self.dt_ix_map = {}
         self.last_ix = 0
-        self.trades = defaultdict(list)
+        self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
         self.vt_symbol = None
         self.bar = None
@@ -167,7 +167,7 @@ class MarketDataChartWidget(ChartWidget):
     def show_trade_info(self, evt: tuple) -> None:
         info = self.trade_info
         info.hide()
-        trades = self.trades[self._cursor._x]
+        trades = self.ix_trades_map[self._cursor._x]
         pos = self.ix_pos_map[self._cursor._x]
         pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
         trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
@@ -252,33 +252,27 @@ class MarketDataChartWidget(ChartWidget):
         """"""
         trade_scatters = []
         for trade in trades:
-            # ix = self.dt_ix_map.get(trade.time.replace(second=0))
 
             for _dt, ix in self.dt_ix_map.items():
                 if trade.time < _dt:
-                    self.trades[ix-1].append(trade)
+                    self.ix_trades_map[ix - 1].append(trade)
                     scatter = self.__trade2scatter(ix-1, trade)
                     trade_scatters.append(scatter)
                     break
-
-            # if ix is not None:
-            #     self.trades[ix].append(trade)
-            #     scatter = self.__trade2scatter(ix, trade)
-            #     trade_scatters.append(scatter)
 
         self.trade_scatter.setData(trade_scatters)
 
     def update_trade(self, trade: TradeData):
         ix = self.dt_ix_map.get(trade.time.replace(second=0))
         if ix is not None:
-            self.trades[ix].append(trade)
+            self.ix_trades_map[ix].append(trade)
             scatter = self.__trade2scatter(ix, trade)
             self.__trade2pos(ix, trade)
             self.trade_scatter.addPoints([scatter])
 
         for _dt, ix in self.dt_ix_map.items():
             if trade.time < _dt:
-                self.trades[ix - 1].append(trade)
+                self.ix_trades_map[ix - 1].append(trade)
                 scatter = self.__trade2scatter(ix - 1, trade)
                 self.__trade2pos(ix-1, trade)
                 self.trade_scatter.addPoints([scatter])
@@ -352,7 +346,7 @@ class MarketDataChartWidget(ChartWidget):
         net_p = 0
         net_value = 0
         for ix in self.dt_ix_map.values():
-            trades = self.trades[ix]
+            trades = self.ix_trades_map[ix]
             for t in trades:
                 if t.direction == Direction.LONG:
                     net_p += t.volume
@@ -362,6 +356,35 @@ class MarketDataChartWidget(ChartWidget):
                     net_value -= t.volume * t.price
             self.ix_pos_map[ix] = (net_p, net_value)
 
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        """
+        Reimplement this method of parent to move chart horizontally and zoom in/out.
+        """
+        super().keyPressEvent(event)
+
+        if event.key() == QtCore.Qt.Key_PageUp:
+            self._on_key_pageUp()
+        elif event.key() == QtCore.Qt.Key_PageDown:
+            self._on_key_pageDown()
+
+    def _on_key_pageUp(self):
+        x = self._cursor._x
+        while x <= self._right_ix:
+            x += 1
+            if self.ix_trades_map.get(x):
+                self._cursor.move_to(x)
+                self.show_trade_info(tuple())
+                break
+
+    def _on_key_pageDown(self):
+        x = self._cursor._x
+        while x >= 0:
+            x -= 1
+            if self.ix_trades_map.get(x):
+                self._cursor.move_to(x)
+                self.show_trade_info(tuple())
+                break
+
     def clear_all(self) -> None:
         """"""
         super().clear_all()
@@ -369,7 +392,7 @@ class MarketDataChartWidget(ChartWidget):
         self.dt_ix_map.clear()
         self.last_ix = 0
         self.trade_scatter.clear()
-        self.trades = defaultdict(list)
+        self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
 
         candle_plot = self.get_plot("candle")

@@ -510,6 +510,18 @@ class ChartCursor(QtCore.QObject):
 
         self._update_after_move()
 
+    def move_to(self, x) -> None:
+        bar_count = self._manager.get_count()
+        if x > bar_count - 1:
+            x = bar_count - 1
+        elif x < 0:
+            x = 0
+
+        self._x = x
+
+        self._update_after_move()
+
+
     def _update_after_move(self) -> None:
         """
         Update cursor after moved by left/right.
