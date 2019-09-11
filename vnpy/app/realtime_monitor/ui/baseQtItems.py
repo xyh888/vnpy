@@ -32,6 +32,7 @@ from collections import defaultdict
 from vnpy.trader.ui.widget import BaseMonitor, TimeCell, BaseCell
 from vnpy.app.realtime_monitor.ui.indicatorQtItems import INDICATOR
 import talib
+from contextlib import contextmanager
 
 
 class TickSaleMonitor(BaseMonitor):
@@ -80,6 +81,7 @@ class InfoWidget(QFormLayout):
         self.bid_line.setText("")
 
 class MarketDataChartWidget(ChartWidget):
+    signal_new_bar_request = QtCore.pyqtSignal(int)
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.dt_ix_map = {}
@@ -89,6 +91,7 @@ class MarketDataChartWidget(ChartWidget):
         self.vt_symbol = None
         self.bar = None
         self.last_tick = None
+        self._updated = True
         self.indicators = {i.name: i for i in INDICATOR if i.plot_name == 'indicator'}
         self.current_indicator = list(self.indicators.keys())[0]
         self.init_chart_ui()
@@ -107,7 +110,6 @@ class MarketDataChartWidget(ChartWidget):
         for i in INDICATOR:
             if i.plot_name == 'candle':
                 self.add_item(i, i.name, i.plot_name)
-                break
 
         ind = self.indicators[self.current_indicator]
         self.add_item(ind, ind.name, ind.plot_name)
@@ -119,6 +121,7 @@ class MarketDataChartWidget(ChartWidget):
         self.init_last_tick_line()
         self.init_order_lines()
         self.init_trade_info()
+        self.init_splitLine()
 
     def init_trade_scatter(self):
         self.trade_scatter = pg.ScatterPlotItem()
@@ -186,12 +189,13 @@ class MarketDataChartWidget(ChartWidget):
 
     def update_history(self, history: list):
         """"""
-        super().update_history(history)
+        with self.updating():
+            super().update_history(history)
 
-        for ix, bar in enumerate(history):
-            self.dt_ix_map[bar.datetime] = ix
-        else:
-            self.last_ix = ix
+            for ix, bar in enumerate(history):
+                self.dt_ix_map[bar.datetime] = ix
+            else:
+                self.last_ix = ix
 
     def update_tick(self, tick: TickData):
         """
@@ -356,6 +360,26 @@ class MarketDataChartWidget(ChartWidget):
                     net_value -= t.volume * t.price
             self.ix_pos_map[ix] = (net_p, net_value)
 
+    def init_splitLine(self):
+        self.splitLines = []
+
+    def add_splitLine(self, split_dt, style=None):
+        candle = self.get_plot('candle')
+        ix = self.dt_ix_map.get(split_dt, None)
+        if candle and ix is not None:
+            sl = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(color='r', width=1.5, style=style if style else QtCore.Qt.DashDotLine))
+            sl.setPos(ix - 0.5)
+            candle.addItem(sl)
+            self.splitLines.append(sl)
+
+    def clear_splitLine(self):
+        candle = self.get_plot('candle')
+        if candle:
+            for l in self.splitLines:
+                candle.removeItem(l)
+            else:
+                self.splitLines.clear()
+
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         """
         Reimplement this method of parent to move chart horizontally and zoom in/out.
@@ -385,6 +409,45 @@ class MarketDataChartWidget(ChartWidget):
                 self.show_trade_info(tuple())
                 break
 
+    def mouseMoveEvent(self, ev):
+        super().mouseMoveEvent(ev)
+
+        if ev.buttons() != Qt.LeftButton:
+            return
+
+        last_x = self._mouse_last_x
+        cur_x = ev.x()
+        self._mouse_last_x = ev.x()
+
+        if self.is_updated() and cur_x < last_x and self._right_ix > self.last_ix:
+            self.signal_new_bar_request.emit(30)
+
+    def mousePressEvent(self, ev):
+        super().mousePressEvent(ev)
+
+        if ev.buttons() != Qt.LeftButton:
+            return
+
+        self._mouse_last_x = ev.x()
+
+    # def mouseReleaseEvent(self, ev):
+    #     super().mouseReleaseEvent(ev)
+    #
+    #     if ev.buttons() != Qt.LeftButton:
+    #         return
+    #
+    #     self._mouse_last_x = None
+    #     self._allow_new_bar_request = False
+
+    def is_updated(self):
+        return self._updated
+
+    @contextmanager
+    def updating(self):
+        self._updated = False
+        yield self
+        self._updated = True
+
     def clear_all(self) -> None:
         """"""
         super().clear_all()
@@ -394,6 +457,7 @@ class MarketDataChartWidget(ChartWidget):
         self.trade_scatter.clear()
         self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self._updated = True
 
         candle_plot = self.get_plot("candle")
         for _, l in self.order_lines.items():
@@ -402,3 +466,5 @@ class MarketDataChartWidget(ChartWidget):
         self.order_lines.clear()
 
         self.last_tick_line.setPos(0)
+
+        self.clear_splitLine()
