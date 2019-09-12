@@ -418,9 +418,10 @@ class MarketDataChartWidget(ChartWidget):
         last_x = self._mouse_last_x
         cur_x = ev.x()
         self._mouse_last_x = ev.x()
+        offset = last_x - cur_x
 
-        if self.is_updated() and cur_x < last_x and self._right_ix > self.last_ix:
-            self.signal_new_bar_request.emit(30)
+        if self.is_updated() and offset >= 15 and self._right_ix > self.last_ix:
+            self.signal_new_bar_request.emit(offset)
 
     def mousePressEvent(self, ev):
         super().mousePressEvent(ev)

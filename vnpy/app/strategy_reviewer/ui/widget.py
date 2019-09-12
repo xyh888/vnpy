@@ -192,6 +192,7 @@ class TradeChartDialog(QtWidgets.QDialog):
         super().__init__()
         self.main_engine = main_engine
         self.event_engine = event_engine
+        self.history_data = None
         self.strategy = ""
         self.trade_data = {}
         self.available_tradeid = set()
@@ -214,6 +215,7 @@ class TradeChartDialog(QtWidgets.QDialog):
 
         self.tradeChart.cellDoubleClicked.connect(self.show_candle_chart)
         self.tradeChart.cellClicked.connect(self.check_tradeid)
+        self.candleChart.chart.signal_new_bar_request.connect(self.update_backwark_bars)
 
     def update_trades(self, strategy):
         trade_data = database_manager.load_trade_data(datetime(2000, 1, 1), datetime.now(), strategy=strategy)
@@ -278,17 +280,58 @@ class TradeChartDialog(QtWidgets.QDialog):
             req = HistoryRequest(symbol, exchange, start, end, Interval.MINUTE)
             gateway = self.main_engine.get_gateway('IB')
             if gateway and gateway.api.status:
-                history_data = gateway.query_history(req)
+                self.history_data = history_data = gateway.query_history(req)
                 self.candleChart.update_all(history_data, trade_data, [])
             database_manager.save_bar_data(history_data)
 
         self.candleChart.show()
+
+    def update_backwark_bars(self, n):
+        chart = self.candleChart.chart
+        last_bar = chart._manager.get_bar(chart.last_ix)
+        if last_bar:
+            n = min(n, 60)
+            symbol = last_bar.symbol
+            exchange = last_bar.exchange
+            print(last_bar.datetime, self.candleChart.last_end)
+            start = max(last_bar.datetime, self.candleChart.last_end)
+
+            if start >= dt.datetime.now():
+                return
+
+            end = start + n * dt.timedelta(minutes=1)
+            if not self.checkTradeTime(end.time()):
+                history_data = database_manager.load_bar_data(symbol, exchange, Interval.MINUTE, start=start, end=end)
+
+                if len(history_data) == 0 or len(history_data) / ((end - start).total_seconds() / 60) < 0.7:
+                    req = HistoryRequest(symbol, exchange, start, end, Interval.MINUTE)
+                    gateway = self.main_engine.get_gateway('IB')
+                    if gateway and gateway.api.status:
+                        history_data = gateway.query_history(req)
+                    database_manager.save_bar_data(history_data)
+
+                for bar in history_data:
+                    self.candleChart.chart.update_bar(bar)
+
+            self.candleChart.last_end = end
+
+    @staticmethod
+    def checkTradeTime(t):
+        TRADINGHOURS = [(dt.time(3, 0), dt.time(9, 15)),
+                        (dt.time(12, 0), dt.time(13, 0)),
+                        (dt.time(16, 30), dt.time(17, 15))]
+        for tp in TRADINGHOURS:
+            if tp[0] <= t < tp[1]:
+                return True
+
+        return False
 
 
 class CandleChartDialog(QtWidgets.QDialog):
     def __init__(self):
         """"""
         super().__init__()
+        self.last_end = dt.datetime(1970, 1, 1)
         self.init_ui()
 
     def init_ui(self):
