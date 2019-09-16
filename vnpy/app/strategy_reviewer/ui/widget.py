@@ -34,24 +34,56 @@ class StrategyReviewer(QtWidgets.QWidget):
         self.setWindowTitle("策略执行回顾")
         self.resize(1100, 600)
 
-        self.table = StrategyMonitor(self.main_engine, self.event_engine)
-        self.table.cellDoubleClicked.connect(self.show_trade_chart)
-        self.table.setSortingEnabled(True)
+        self.datetime_from = QtWidgets.QDateTimeEdit()
+        self.datetime_to = QtWidgets.QDateTimeEdit()
+        today = dt.date.today()
+        self.datetime_from.setDateTime(dt.datetime(year=today.year, month=today.month, day=today.day))
+        self.datetime_to.setDateTime(dt.datetime(year=today.year, month=today.month, day=today.day, hour=23, minute=59))
+        self.query_btn = QtWidgets.QPushButton("查询")
+        self.query_btn.clicked.connect(self.update_strategy_data)
+
+        self.tab = QtWidgets.QTabWidget()
+        self.strategy_monitor = StrategyMonitor(self.main_engine, self.event_engine)
+        self.strategy_monitor.cellDoubleClicked.connect(self.show_trade_chart)
+        # self.strategy_monitor.cellClicked.connect(self.check_strategies)
+        self.strategy_monitor.resize(1000, 600)
+        self.tab.addTab(self.strategy_monitor, '策略统计')
 
         self.trade = TradeChartDialog(self.main_engine, self.event_engine)
 
-        vbox = QtWidgets.QVBoxLayout()
-        vbox.addWidget(self.table)
+        time_hbox = QtWidgets.QHBoxLayout()
+        time_hbox.addWidget(self.datetime_from, 3)
+        time_hbox.addWidget(self.datetime_to, 3)
+        time_hbox.addWidget(self.query_btn, 1)
 
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addLayout(time_hbox)
+        vbox.addWidget(self.tab)
         self.setLayout(vbox)
 
-        self.strategies = self.calc()
-        self.update_data(self.strategies)
+        self.update_strategy_data()
 
     def clear_data(self):
         """"""
         self.updated = False
-        self.table.setRowCount(0)
+        self.strategy_monitor.setRowCount(0)
+
+    def update_strategy_data(self):
+        self.strategy_monitor.clearContents()
+        self.strategy_monitor.setRowCount(0)
+        self.strategies = self.calc()
+        self.update_data(self.strategies)
+        self.strategy_monitor.resize_columns()
+
+    # def check_strategies(self, r, c):
+    #     if c == 0:
+    #         cell = self.strategy_monitor.item(r, c)
+    #         if cell.checkState():
+    #             cell.setCheckState(QtCore.Qt.Unchecked)
+    #             self.available_strategies.remove(cell.text())
+    #         else:
+    #             cell.setCheckState(QtCore.Qt.Checked)
+    #             self.available_strategies.add(cell.text())
 
     def update_data(self, data: list):
         """"""
@@ -59,7 +91,7 @@ class StrategyReviewer(QtWidgets.QWidget):
 
         data.reverse()
         for obj in data:
-            self.table.insert_new_row(obj)
+            self.strategy_monitor.insert_new_row(obj)
 
     def is_updated(self):
         """"""
@@ -77,11 +109,11 @@ class StrategyReviewer(QtWidgets.QWidget):
                     self.datas[d.vt_symbol].append(d)
 
             @property
-            def start_date(self):
+            def start_datetime(self):
                 return self.raw_data[0].time
 
             @property
-            def end_date(self):
+            def end_datetime(self):
                 return self.raw_data[-1].time
 
             @property
@@ -107,38 +139,49 @@ class StrategyReviewer(QtWidgets.QWidget):
                 return '\n'.join(all_cost)
 
         l = []
+        start = self.datetime_from.dateTime().toPyDateTime()
+        end = self.datetime_to.dateTime().toPyDateTime()
         for n in strategies:
-            datas = database_manager.load_trade_data(datetime(2000, 1, 1), datetime.now(), strategy=n)
-            s = strategy(n, datas)
+            datas = database_manager.load_trade_data(start, end, strategy=n)
+            if datas:
+                s = strategy(n, datas)
+                l.append(s)
+        else:
+            datas = database_manager.load_trade_data(start, end)
+            s = strategy('TOTAL', datas)
             l.append(s)
 
         return l
 
     def show_trade_chart(self, row, column):
         self.trade.clear_all()
-        strategy_name = self.table.item(row, 0).text()
-        self.trade.update_trades(strategy_name)
+        strategy_name = self.strategy_monitor.item(row, 0).text()
+        if strategy_name == 'TOTAL':
+            strategy_name=None
+
+        start = self.datetime_from.dateTime().toPyDateTime()
+        end = self.datetime_to.dateTime().toPyDateTime()
+        self.trade.update_trades(start, end, strategy_name)
         self.trade.show()
 
-    # def show_daily_pnl(self, row, column):
-    #     strategy_name = self.table.item(row, 0).text()
-    #     strategy = self.strategies[strategy_name]
-    #     for vt_symbol, datas in strategy.datas.items():
-    #         start = datas[0].time
-    #         end = datas[-1].time
-    #         symbol, exchange = vt_symbol.split('.')
-    #         his_data = self.review_engine.get_daily_history(symbol, exchange, start, end)
-    #         for bar in his_data:
-    #             for trade in datas:
-    #             if bar.datetime.date()
+class CheckCell(BaseCell):
+    def __init__(self, content, data):
+        super().__init__(content, data)
 
-
+    def set_content(self, content, data):
+        self.setText(str(content))
+        self._data = data
+        # if self._data:
+        self.setCheckState(QtCore.Qt.Checked)
+        # else:
+        #     self.setCheckState(QtCore.Qt.Unchecked)
 
 class StrategyMonitor(BaseMonitor):
+    sorting = True
     headers = {
         "name": {"display": "策略名称", "cell": BaseCell, "update": False},
-        "start_date": {"display": "首个交易日", "cell": BaseCell, "update": False},
-        "end_date": {"display": "最后交易日", "cell": BaseCell, "update": False},
+        "start_datetime": {"display": "首次交易时间", "cell": BaseCell, "update": False},
+        "end_datetime": {"display": "最后交易时间", "cell": BaseCell, "update": False},
         "trade_count": {"display": "交易次数", "cell": BaseCell, "update": False},
         "cost": {"display": "持仓成本", "cell": BaseCell, "update": False},
 
@@ -154,18 +197,6 @@ class StrategyMonitor(BaseMonitor):
         # "daily_trade_count": {"display": "日均成交笔数", "cell": BaseCell, "update": False},
     }
 
-class CheckCell(BaseCell):
-    def __init__(self, content, data):
-        super().__init__(content, data)
-
-    def set_content(self, content, data):
-        self.setText(str(content))
-        self._data = data
-        # if self._data:
-        self.setCheckState(QtCore.Qt.Checked)
-        # else:
-        #     self.setCheckState(QtCore.Qt.Unchecked)
-
 class TradeMonitor(BaseMonitor):
     """
     Monitor for trade data.
@@ -173,17 +204,17 @@ class TradeMonitor(BaseMonitor):
     data_key = 'tradeid'
     sorting = True
     headers = {
-        # "check": {"display": "包含", "cell": CheckCell, "update": False},
         "tradeid": {"display": "成交号 ", "cell": CheckCell, "update": False},
         "orderid": {"display": "委托号", "cell": BaseCell, "update": False},
         "symbol": {"display": "代码", "cell": BaseCell, "update": False},
         "exchange": {"display": "交易所", "cell": EnumCell, "update": False},
         "direction": {"display": "方向", "cell": DirectionCell, "update": False},
-        "offset": {"display": "开平", "cell": EnumCell, "update": False},
+        # "offset": {"display": "开平", "cell": EnumCell, "update": False},
         "price": {"display": "价格", "cell": BaseCell, "update": False},
         "volume": {"display": "数量", "cell": BaseCell, "update": False},
         "time": {"display": "时间", "cell": BaseCell, "update": False},
-        "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
+        "strategy": {"display": "策略", "cell": BaseCell, "update": False},
+        # "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
     }
 
 from vnpy.app.realtime_monitor.ui.baseQtItems import MarketDataChartWidget
@@ -217,8 +248,8 @@ class TradeChartDialog(QtWidgets.QDialog):
         self.tradeChart.cellClicked.connect(self.check_tradeid)
         self.candleChart.chart.signal_new_bar_request.connect(self.update_backwark_bars)
 
-    def update_trades(self, strategy):
-        trade_data = database_manager.load_trade_data(datetime(2000, 1, 1), datetime.now(), strategy=strategy)
+    def update_trades(self, start, end, strategy=None):
+        trade_data = database_manager.load_trade_data(start, end, strategy=strategy)
         self.strategy = strategy
         self.available_tradeid = set()
         for t in trade_data:
