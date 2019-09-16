@@ -85,7 +85,7 @@ class MarketDataChartWidget(ChartWidget):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.dt_ix_map = {}
-        self.last_ix = 0
+        self.last_ix = -1
         self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
         self.vt_symbol = None
@@ -260,7 +260,7 @@ class MarketDataChartWidget(ChartWidget):
             for _dt, ix in self.dt_ix_map.items():
                 if trade.time < _dt:
                     self.ix_trades_map[ix - 1].append(trade)
-                    scatter = self.__trade2scatter(ix-1, trade)
+                    scatter = self.__trade2scatter(ix - 1, trade)
                     trade_scatters.append(scatter)
                     break
 
@@ -363,12 +363,12 @@ class MarketDataChartWidget(ChartWidget):
     def init_splitLine(self):
         self.splitLines = []
 
-    def add_splitLine(self, split_dt, style=None):
+    def add_splitLine(self, split_dt, style=None, offset=-0.5):
         candle = self.get_plot('candle')
         ix = self.dt_ix_map.get(split_dt, None)
         if candle and ix is not None:
             sl = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(color='r', width=1.5, style=style if style else QtCore.Qt.DashDotLine))
-            sl.setPos(ix - 0.5)
+            sl.setPos(ix + offset)
             candle.addItem(sl)
             self.splitLines.append(sl)
 
@@ -419,8 +419,7 @@ class MarketDataChartWidget(ChartWidget):
         cur_x = ev.x()
         self._mouse_last_x = ev.x()
         offset = last_x - cur_x
-
-        if self.is_updated() and offset >= 15 and self._right_ix > self.last_ix:
+        if self.is_updated() and offset >= 15 and self._right_ix >= self.last_ix:
             self.signal_new_bar_request.emit(offset)
 
     def mousePressEvent(self, ev):
@@ -454,7 +453,7 @@ class MarketDataChartWidget(ChartWidget):
         super().clear_all()
         self.vt_symbol = None
         self.dt_ix_map.clear()
-        self.last_ix = 0
+        self.last_ix = -1
         self.trade_scatter.clear()
         self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
