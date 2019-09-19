@@ -44,7 +44,11 @@ from vnpy.trader.constant import (
     Interval
 )
 
-ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT", OrderType.STOP: "STP"}
+ORDERTYPE_VT2IB = {
+    OrderType.LIMIT: "LMT",
+    OrderType.MARKET: "MKT",
+    OrderType.STOP: "STP"
+}
 ORDERTYPE_IB2VT = {v: k for k, v in ORDERTYPE_VT2IB.items()}
 
 DIRECTION_VT2IB = {Direction.LONG: "BUY", Direction.SHORT: "SELL"}
@@ -61,19 +65,19 @@ EXCHANGE_VT2IB = {
     Exchange.ICE: "ICE",
     Exchange.SEHK: "SEHK",
     Exchange.HKFE: "HKFE",
+    Exchange.CFE: "CFE"
 }
 EXCHANGE_IB2VT = {v: k for k, v in EXCHANGE_VT2IB.items()}
 
 STATUS_IB2VT = {
-    "Submitted": Status.NOTTRADED,
-    "Filled": Status.ALLTRADED,
-    "Cancelled": Status.CANCELLED,
+    "ApiPending": Status.SUBMITTING,
     "PendingSubmit": Status.SUBMITTING,
     "PreSubmitted": Status.NOTTRADED,
-    "PendingCancel": Status.NOTTRADED,
+    "Submitted": Status.NOTTRADED,
     "ApiCancelled": Status.CANCELLED,
-    "ApiPending": Status.SUBMITTING,
-    "Inactive": Status.SUBMITTING
+    "Cancelled": Status.CANCELLED,
+    "Filled": Status.ALLTRADED,
+    "Inactive": Status.REJECTED,
 }
 
 PRODUCT_VT2IB = {
@@ -365,13 +369,7 @@ class IbApi(EWrapper):
         orderid = str(orderId)
         order = self.orders.get(orderid, None)
         if order:
-            # if order.type == OrderType.STOP:
-            #     if order.status == Status.SUBMITTING and status == 'PreSubmitted':
-            #         order.price == getattr(order, 'aux_price', order.price)
-            #     elif order.status == Status.NOTTRADED and status == 'Submitted':
-            #         order.price == getattr(order, 'lmt_price', order.price)
-
-            order.status = STATUS_IB2VT[status]  # FIXME: PendingCancel is not included
+            order.status = STATUS_IB2VT.get(status, '')  # FIXME: PendingCancel is not included
             order.traded = filled
 
             self.gateway.on_order(copy(order))
@@ -523,6 +521,7 @@ class IbApi(EWrapper):
             net_position=True,
             expiry=parser.parse(contractDetails.contract.lastTradeDateOrContractMonth),
             history_data=True,
+            stop_supported=True,
             gateway_name=self.gateway_name,
         )
 
@@ -733,10 +732,14 @@ class IbApi(EWrapper):
         ib_order.clientId = self.clientid
         ib_order.action = DIRECTION_VT2IB[req.direction]
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
-        ib_order.lmtPrice = req.price
         ib_order.totalQuantity = req.volume
         ib_order.outsideRth = True
         ib_order.account = self.major_account
+
+        if req.type == OrderType.LIMIT:
+            ib_order.lmtPrice = req.price
+        elif req.type == OrderType.STOP:
+            ib_order.auxPrice = req.price
 
         self.client.placeOrder(self.orderid, ib_contract, ib_order)
         self.client.reqIds(1)

@@ -106,6 +106,7 @@ class ChartWidget(pg.PlotWidget):
         # Store plot object in dict
         self._plots[plot_name] = plot
 
+        # Add plot onto the layout
         self._layout.nextRow()
         self._layout.addItem(plot)
 
@@ -123,10 +124,8 @@ class ChartWidget(pg.PlotWidget):
 
         plot = self._plots.get(plot_name)
         plot.addItem(item)
-        self._item_plot_map[item] = plot
 
-        # self._layout.nextRow()
-        # self._layout.addItem(plot)
+        self._item_plot_map[item] = plot
 
     def get_plot(self, plot_name: str) -> pg.PlotItem:
         """
@@ -520,7 +519,6 @@ class ChartCursor(QtCore.QObject):
         self._x = x
 
         self._update_after_move()
-
 
     def _update_after_move(self) -> None:
         """
