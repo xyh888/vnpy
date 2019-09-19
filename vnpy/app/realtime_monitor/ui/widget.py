@@ -9,15 +9,13 @@ THANKS FOR th github project https://github.com/moonnejs/uiKLine
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import MainEngine
 import datetime as dt
-from PyQt5.QtWidgets import *
-from PyQt5 import QtCore
 
 from vnpy.trader.event import EVENT_TRADE, EVENT_ORDER, EVENT_TICK, EVENT_CONTRACT
 from functools import partial
 
 from vnpy.trader.constant import Direction, Interval, Exchange
 from vnpy.trader.object import HistoryRequest, BarData, ContractData, TickData, TradeData
-from vnpy.trader.ui import QtWidgets
+from vnpy.trader.ui import QtWidgets, QtCore, QtGui
 from ..engine import APP_NAME
 
 
@@ -61,7 +59,7 @@ class CandleChartWidget(QtWidgets.QWidget):
         self.indicator_combo.addItems([n for n in self.chart.indicators.keys()])
         self.indicator_combo.currentTextChanged.connect(self.chart.change_indicator)
 
-        self.previous_btn = QPushButton("←")
+        self.previous_btn = QtWidgets.QPushButton("←")
         self.previous_btn.released.connect(partial(self.update_previous_bar, 300))
 
         form = QtWidgets.QFormLayout()

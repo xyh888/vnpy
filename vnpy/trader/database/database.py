@@ -41,8 +41,8 @@ class BaseDatabaseManager(ABC):
     # @abstractmethod
     def load_trade_data(
             self,
-            start: datetime,
-            end: datetime,
+            start: datetime=None,
+            end: datetime=None,
             symbol: str=None,
             exchange: "Exchange"=None,
             strategy: str=None

@@ -21,6 +21,7 @@ from vnpy.trader.utility import ArrayManager, BarGenerator
 from typing import Tuple, Callable
 from collections import defaultdict
 from vnpy.trader.utility import load_json
+from dateutil import parser
 
 import talib
 
@@ -500,6 +501,95 @@ class RSICurveItem(ChartItem):
         self.br_max = -np.inf
         self.br_min = np.inf
 
+
+class SplitLineItem(ChartItem):
+    name = 'split'
+    plot_name = 'candle'
+    SPLITLINE_PARAMS = ['09:15', '17:15']
+    SPLITLINE_COLORS = {'09:15': pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH),
+                        '17:15': pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH)}
+    def __init__(self, manager: BarManager):
+        """"""
+        super().__init__(manager)
+        # self.periods = [5, 10, 20, 30, 60]
+        self.init_setting()
+        self.splitLines = defaultdict(dict)
+        self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        self.SPLITLINE_PARAMS = setting.get('params', self.SPLITLINE_PARAMS)
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            pen_colors = {}
+            for p in self.SPLITLINE_PARAMS:
+                pen_colors[p] = pg.mkPen(**pen_settings[str(p)])
+            self.SPLITLINE_COLORS = pen_colors
+
+        for p in self.SPLITLINE_COLORS.values():
+            p.setStyle(QtCore.Qt.DashDotDotLine)
+
+    def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
+        """"""
+        # Create objects
+        if ix <= self.last_ix:
+            return self.last_picture
+
+        splitLine_picture = QtGui.QPicture()
+        painter = QtGui.QPainter(splitLine_picture)
+        # Draw volume body
+        last_bar = self._manager.get_bar(self.last_ix)
+        timestr = bar.datetime.time().strftime('%H:%M')
+        for t in self.SPLITLINE_PARAMS:
+            _time = parser.parse(t).time()
+            if _time <= bar.datetime.time() and last_bar.datetime < bar.datetime.replace(hour=_time.hour, minute=_time.minute):
+                pen = self.SPLITLINE_COLORS.get(timestr, pg.mkPen(color=(255, 255, 255), width=PEN_WIDTH, style=QtCore.Qt.DashDotDotLine))
+                painter.setPen(pen)
+                line = QtCore.QLineF(ix-0.5, 0, ix-0.5, 40000)
+                self.splitLines[bar.datetime] = line
+                painter.drawLine(line)
+        # Finish
+        painter.end()
+        self.last_ix = ix
+        self.last_picture = splitLine_picture
+        return splitLine_picture
+
+    def boundingRect(self) -> QtCore.QRectF:
+        """"""
+        rect = QtCore.QRectF(
+            0,
+            0,
+            len(self._bar_picutures),
+            40000
+        )
+        return rect
+
+    def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
+        """
+        Get range of y-axis with given x-axis range.
+
+        If min_ix and max_ix not specified, then return range with whole data set.
+        """
+        min_p, max_p = self._manager.get_price_range(min_ix, max_ix)
+        return min_p, max_p
+
+    def get_info_text(self, ix: int) -> str:
+        """
+        Get information text to show by cursor.
+        """
+        text = ''
+        return text
+
+    def clear_all(self) -> None:
+        """
+        Clear all data in the item.
+        """
+        super().clear_all()
+        self.splitLines = defaultdict(dict)
+        self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+
 def drawPath(painter, sp, ep, color):
     path = QtGui.QPainterPath(sp)
     c1 = QtCore.QPointF((sp.x() + ep.x()) / 2, (sp.y() + ep.y()) / 2)
@@ -510,4 +600,4 @@ def drawPath(painter, sp, ep, color):
     painter.drawPath(path)
 
 VISUAL_SETTING = load_json('visual_setting.json')
-INDICATOR = [MACurveItem, MACDItem, INCItem, RSICurveItem]
+INDICATOR = [MACurveItem, SplitLineItem, MACDItem, INCItem, RSICurveItem]

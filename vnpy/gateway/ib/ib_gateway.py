@@ -44,7 +44,11 @@ from vnpy.trader.constant import (
     Interval
 )
 
-ORDERTYPE_VT2IB = {OrderType.LIMIT: "LMT", OrderType.MARKET: "MKT"}
+ORDERTYPE_VT2IB = {
+    OrderType.LIMIT: "LMT",
+    OrderType.MARKET: "MKT",
+    OrderType.STOP: "STP"
+}
 ORDERTYPE_IB2VT = {v: k for k, v in ORDERTYPE_VT2IB.items()}
 
 DIRECTION_VT2IB = {Direction.LONG: "BUY", Direction.SHORT: "SELL"}
@@ -61,19 +65,19 @@ EXCHANGE_VT2IB = {
     Exchange.ICE: "ICE",
     Exchange.SEHK: "SEHK",
     Exchange.HKFE: "HKFE",
+    Exchange.CFE: "CFE"
 }
 EXCHANGE_IB2VT = {v: k for k, v in EXCHANGE_VT2IB.items()}
 
 STATUS_IB2VT = {
-    "Submitted": Status.NOTTRADED,
-    "Filled": Status.ALLTRADED,
-    "Cancelled": Status.CANCELLED,
+    "ApiPending": Status.SUBMITTING,
     "PendingSubmit": Status.SUBMITTING,
     "PreSubmitted": Status.NOTTRADED,
-    "PendingCancel": Status.NOTTRADED,
+    "Submitted": Status.NOTTRADED,
     "ApiCancelled": Status.CANCELLED,
-    "ApiPending": Status.SUBMITTING,
-    "Inactive": Status.SUBMITTING
+    "Cancelled": Status.CANCELLED,
+    "Filled": Status.ALLTRADED,
+    "Inactive": Status.REJECTED,
 }
 
 PRODUCT_VT2IB = {
@@ -364,10 +368,11 @@ class IbApi(EWrapper):
 
         orderid = str(orderId)
         order = self.orders.get(orderid, None)
-        order.status = STATUS_IB2VT[status]  # FIXME: PendingCancel is not included
-        order.traded = filled
+        if order:
+            order.status = STATUS_IB2VT.get(status, '')  # FIXME: PendingCancel is not included
+            order.traded = filled
 
-        self.gateway.on_order(copy(order))
+            self.gateway.on_order(copy(order))
 
     def openOrder(  # pylint: disable=invalid-name
         self,
@@ -384,11 +389,18 @@ class IbApi(EWrapper):
         )
 
         orderid = str(orderId)
+        if ib_order.orderType in ['LMT', 'MKT']:
+            orderType = ORDERTYPE_IB2VT[ib_order.orderType]
+        elif ib_order.orderType.startswith('STP'):
+            orderType = ORDERTYPE_IB2VT['STP']
+        else:
+            orderType = ib_order.orderType
+
         order = OrderData(
             symbol=str(ib_contract.conId),
             exchange=EXCHANGE_IB2VT.get(
                 ib_contract.exchange, ib_contract.exchange),
-            type=ORDERTYPE_IB2VT[ib_order.orderType],
+            type=orderType,
             orderid=orderid,
             direction=DIRECTION_IB2VT[ib_order.action],
             price=ib_order.lmtPrice,
@@ -509,6 +521,7 @@ class IbApi(EWrapper):
             net_position=True,
             expiry=parser.parse(contractDetails.contract.lastTradeDateOrContractMonth),
             history_data=True,
+            stop_supported=True,
             gateway_name=self.gateway_name,
         )
 
@@ -719,10 +732,14 @@ class IbApi(EWrapper):
         ib_order.clientId = self.clientid
         ib_order.action = DIRECTION_VT2IB[req.direction]
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
-        ib_order.lmtPrice = req.price
         ib_order.totalQuantity = req.volume
         ib_order.outsideRth = True
         ib_order.account = self.major_account
+
+        if req.type == OrderType.LIMIT:
+            ib_order.lmtPrice = req.price
+        elif req.type == OrderType.STOP:
+            ib_order.auxPrice = req.price
 
         self.client.placeOrder(self.orderid, ib_contract, ib_order)
         self.client.reqIds(1)

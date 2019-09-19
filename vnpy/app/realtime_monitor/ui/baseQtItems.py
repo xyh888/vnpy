@@ -32,6 +32,7 @@ from collections import defaultdict
 from vnpy.trader.ui.widget import BaseMonitor, TimeCell, BaseCell
 from vnpy.app.realtime_monitor.ui.indicatorQtItems import INDICATOR
 import talib
+from contextlib import contextmanager
 
 
 class TickSaleMonitor(BaseMonitor):
@@ -80,15 +81,17 @@ class InfoWidget(QFormLayout):
         self.bid_line.setText("")
 
 class MarketDataChartWidget(ChartWidget):
+    signal_new_bar_request = QtCore.pyqtSignal(int)
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
         self.dt_ix_map = {}
-        self.last_ix = 0
-        self.trades = defaultdict(list)
+        self.last_ix = -1
+        self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
         self.vt_symbol = None
         self.bar = None
         self.last_tick = None
+        self._updated = True
         self.indicators = {i.name: i for i in INDICATOR if i.plot_name == 'indicator'}
         self.current_indicator = list(self.indicators.keys())[0]
         self.init_chart_ui()
@@ -107,7 +110,6 @@ class MarketDataChartWidget(ChartWidget):
         for i in INDICATOR:
             if i.plot_name == 'candle':
                 self.add_item(i, i.name, i.plot_name)
-                break
 
         ind = self.indicators[self.current_indicator]
         self.add_item(ind, ind.name, ind.plot_name)
@@ -119,6 +121,7 @@ class MarketDataChartWidget(ChartWidget):
         self.init_last_tick_line()
         self.init_order_lines()
         self.init_trade_info()
+        self.init_splitLine()
 
     def init_trade_scatter(self):
         self.trade_scatter = pg.ScatterPlotItem()
@@ -167,7 +170,7 @@ class MarketDataChartWidget(ChartWidget):
     def show_trade_info(self, evt: tuple) -> None:
         info = self.trade_info
         info.hide()
-        trades = self.trades[self._cursor._x]
+        trades = self.ix_trades_map[self._cursor._x]
         pos = self.ix_pos_map[self._cursor._x]
         pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
         trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
@@ -186,12 +189,13 @@ class MarketDataChartWidget(ChartWidget):
 
     def update_history(self, history: list):
         """"""
-        super().update_history(history)
+        with self.updating():
+            super().update_history(history)
 
-        for ix, bar in enumerate(history):
-            self.dt_ix_map[bar.datetime] = ix
-        else:
-            self.last_ix = ix
+            for ix, bar in enumerate(history):
+                self.dt_ix_map[bar.datetime] = ix
+            else:
+                self.last_ix = ix
 
     def update_tick(self, tick: TickData):
         """
@@ -252,33 +256,27 @@ class MarketDataChartWidget(ChartWidget):
         """"""
         trade_scatters = []
         for trade in trades:
-            # ix = self.dt_ix_map.get(trade.time.replace(second=0))
 
             for _dt, ix in self.dt_ix_map.items():
                 if trade.time < _dt:
-                    self.trades[ix-1].append(trade)
-                    scatter = self.__trade2scatter(ix-1, trade)
+                    self.ix_trades_map[ix - 1].append(trade)
+                    scatter = self.__trade2scatter(ix - 1, trade)
                     trade_scatters.append(scatter)
                     break
-
-            # if ix is not None:
-            #     self.trades[ix].append(trade)
-            #     scatter = self.__trade2scatter(ix, trade)
-            #     trade_scatters.append(scatter)
 
         self.trade_scatter.setData(trade_scatters)
 
     def update_trade(self, trade: TradeData):
         ix = self.dt_ix_map.get(trade.time.replace(second=0))
         if ix is not None:
-            self.trades[ix].append(trade)
+            self.ix_trades_map[ix].append(trade)
             scatter = self.__trade2scatter(ix, trade)
             self.__trade2pos(ix, trade)
             self.trade_scatter.addPoints([scatter])
 
         for _dt, ix in self.dt_ix_map.items():
             if trade.time < _dt:
-                self.trades[ix - 1].append(trade)
+                self.ix_trades_map[ix - 1].append(trade)
                 scatter = self.__trade2scatter(ix - 1, trade)
                 self.__trade2pos(ix-1, trade)
                 self.trade_scatter.addPoints([scatter])
@@ -322,13 +320,14 @@ class MarketDataChartWidget(ChartWidget):
 
             if line not in candle_plot.items:
                 candle_plot.addItem(line)
-            line.setPos(order.price)
+
             line.setAngle(0)
-            line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
-            line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
             line.label = pg.InfLineLabel(line,
                                          text=f'{order.type.value}:{"↑" if order.direction == Direction.LONG else "↓"}{order.volume - order.traded}@{order.price}',
                                          color='r' if order.direction == Direction.LONG else 'g')
+            line.setPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH))
+            line.setHoverPen(pg.mkPen(color=UP_COLOR if order.direction == Direction.LONG else DOWN_COLOR, width=PEN_WIDTH * 2))
+            line.setPos(order.price)
 
         elif order.status in (Status.ALLTRADED, Status.CANCELLED, Status.REJECTED):
             if order.vt_orderid in self.order_lines:
@@ -351,7 +350,7 @@ class MarketDataChartWidget(ChartWidget):
         net_p = 0
         net_value = 0
         for ix in self.dt_ix_map.values():
-            trades = self.trades[ix]
+            trades = self.ix_trades_map[ix]
             for t in trades:
                 if t.direction == Direction.LONG:
                     net_p += t.volume
@@ -361,15 +360,104 @@ class MarketDataChartWidget(ChartWidget):
                     net_value -= t.volume * t.price
             self.ix_pos_map[ix] = (net_p, net_value)
 
+    def init_splitLine(self):
+        self.splitLines = []
+
+    def add_splitLine(self, split_dt, style=None, offset=-0.5):
+        candle = self.get_plot('candle')
+        ix = self.dt_ix_map.get(split_dt, None)
+        if candle and ix is not None:
+            sl = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(color='r', width=1.5, style=style if style else QtCore.Qt.DashDotLine))
+            sl.setPos(ix + offset)
+            candle.addItem(sl)
+            self.splitLines.append(sl)
+
+    def clear_splitLine(self):
+        candle = self.get_plot('candle')
+        if candle:
+            for l in self.splitLines:
+                candle.removeItem(l)
+            else:
+                self.splitLines.clear()
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        """
+        Reimplement this method of parent to move chart horizontally and zoom in/out.
+        """
+        super().keyPressEvent(event)
+
+        if event.key() == QtCore.Qt.Key_PageUp:
+            self._on_key_pageUp()
+        elif event.key() == QtCore.Qt.Key_PageDown:
+            self._on_key_pageDown()
+
+    def _on_key_pageUp(self):
+        x = self._cursor._x
+        while x <= self._right_ix:
+            x += 1
+            if self.ix_trades_map.get(x):
+                self._cursor.move_to(x)
+                self.show_trade_info(tuple())
+                break
+
+    def _on_key_pageDown(self):
+        x = self._cursor._x
+        while x >= 0:
+            x -= 1
+            if self.ix_trades_map.get(x):
+                self._cursor.move_to(x)
+                self.show_trade_info(tuple())
+                break
+
+    def mouseMoveEvent(self, ev):
+        super().mouseMoveEvent(ev)
+
+        if ev.buttons() != Qt.LeftButton:
+            return
+
+        last_x = self._mouse_last_x
+        cur_x = ev.x()
+        self._mouse_last_x = ev.x()
+        offset = last_x - cur_x
+        if self.is_updated() and offset >= 15 and self._right_ix >= self.last_ix:
+            self.signal_new_bar_request.emit(offset)
+
+    def mousePressEvent(self, ev):
+        super().mousePressEvent(ev)
+
+        if ev.buttons() != Qt.LeftButton:
+            return
+
+        self._mouse_last_x = ev.x()
+
+    # def mouseReleaseEvent(self, ev):
+    #     super().mouseReleaseEvent(ev)
+    #
+    #     if ev.buttons() != Qt.LeftButton:
+    #         return
+    #
+    #     self._mouse_last_x = None
+    #     self._allow_new_bar_request = False
+
+    def is_updated(self):
+        return self._updated
+
+    @contextmanager
+    def updating(self):
+        self._updated = False
+        yield self
+        self._updated = True
+
     def clear_all(self) -> None:
         """"""
         super().clear_all()
         self.vt_symbol = None
         self.dt_ix_map.clear()
-        self.last_ix = 0
+        self.last_ix = -1
         self.trade_scatter.clear()
-        self.trades = defaultdict(list)
+        self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self._updated = True
 
         candle_plot = self.get_plot("candle")
         for _, l in self.order_lines.items():
@@ -378,3 +466,5 @@ class MarketDataChartWidget(ChartWidget):
         self.order_lines.clear()
 
         self.last_tick_line.setPos(0)
+
+        self.clear_splitLine()

@@ -314,6 +314,7 @@ class DbTradeData(Document):
             time=self.time,
             gateway_name="DB"
         )
+        trade.strategy = self.strategy
 
         return trade
 
@@ -350,9 +351,15 @@ class MongoManager(BaseDatabaseManager):
         return data
 
     def load_trade_data(
-            self,  start: datetime, end: datetime,
+            self,  start: datetime=None, end: datetime=None,
             symbol: str=None, exchange: Exchange=None, strategy: str=None) -> Sequence[TradeData]:
-        params = {'time__gte': start, 'time__lte': end}
+        params = {}
+        if start is not None:
+            params['time__gte'] = start
+
+        if end is not None:
+            params['time__lte'] = end
+
         if symbol is not None:
             params['symbol'] = symbol
 
