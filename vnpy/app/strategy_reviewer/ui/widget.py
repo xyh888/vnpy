@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from vnpy.trader.engine import MainEngine
 from vnpy.event import EventEngine
 from vnpy.trader.object import HistoryRequest
-from vnpy.trader.constant import Interval
+from vnpy.trader.constant import Interval, Direction
 from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
 from collections import defaultdict
 from ..engine import APP_NAME
@@ -39,8 +39,13 @@ class StrategyReviewer(QtWidgets.QWidget):
         today = dt.date.today()
         self.datetime_from.setDateTime(dt.datetime(year=today.year, month=today.month, day=today.day))
         self.datetime_to.setDateTime(dt.datetime(year=today.year, month=today.month, day=today.day, hour=23, minute=59))
-        self.query_btn = QtWidgets.QPushButton("查询")
-        self.query_btn.clicked.connect(self.update_strategy_data)
+        # self.query_btn = QtWidgets.QPushButton("查询")
+        self.skip_checkbox = QtWidgets.QCheckBox('AutoSkip')
+        self.skip_checkbox.setToolTip('自动过滤未平仓订单')
+        self.skip_checkbox.clicked.connect(lambda : self.update_strategy_data(self.skip_checkbox.checkState()))
+        self.datetime_from.editingFinished.connect(lambda : self.update_strategy_data(self.skip_checkbox.checkState()))
+        self.datetime_to.editingFinished.connect(lambda: self.update_strategy_data(self.skip_checkbox.checkState()))
+        # self.query_btn.clicked.connect(self.update_strategy_data)
 
         self.tab = QtWidgets.QTabWidget()
         self.strategy_monitor = StrategyMonitor(self.main_engine, self.event_engine)
@@ -54,24 +59,25 @@ class StrategyReviewer(QtWidgets.QWidget):
         time_hbox = QtWidgets.QHBoxLayout()
         time_hbox.addWidget(self.datetime_from, 3)
         time_hbox.addWidget(self.datetime_to, 3)
-        time_hbox.addWidget(self.query_btn, 1)
+        time_hbox.addWidget(self.skip_checkbox, 1)
+        # time_hbox.addWidget(self.query_btn, 1)
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addLayout(time_hbox)
         vbox.addWidget(self.tab)
         self.setLayout(vbox)
 
-        self.update_strategy_data()
+        self.update_strategy_data(False)
 
     def clear_data(self):
         """"""
         self.updated = False
         self.strategy_monitor.setRowCount(0)
 
-    def update_strategy_data(self):
+    def update_strategy_data(self, skip):
         self.strategy_monitor.clearContents()
         self.strategy_monitor.setRowCount(0)
-        self.strategies = self.calc()
+        self.strategies = self.calc(skip)
         self.update_data(self.strategies)
         self.strategy_monitor.resize_columns()
 
@@ -85,35 +91,66 @@ class StrategyReviewer(QtWidgets.QWidget):
     #             cell.setCheckState(QtCore.Qt.Checked)
     #             self.available_strategies.add(cell.text())
 
-    def update_data(self, data: list):
+    def update_data(self, data: dict):
         """"""
         self.updated = True
 
-        data.reverse()
-        for obj in data:
-            self.strategy_monitor.insert_new_row(obj)
+        # data.reverse()
+        for n, s in data.items():
+            self.strategy_monitor.insert_new_row(s)
 
     def is_updated(self):
         """"""
         return self.updated
 
-    def calc(self):
+    def calc(self, skip):
         strategies = database_manager.get_all_strategy()
         class strategy:
-            def __init__(self, name, datas):
+            def __init__(self, name, datas, auto_skip_daily_opentrade=False):
                 self.name = name
                 self.raw_data = datas
+                self._skip = auto_skip_daily_opentrade
                 self.raw_data.sort(key=lambda d: d.time)
-                self.datas = defaultdict(list)
+                self.datas = defaultdict(lambda :defaultdict(list))
+                self.init_data(auto_skip_daily_opentrade)
+
+
+            def init_data(self, skip):
                 for d in self.raw_data:
-                    self.datas[d.vt_symbol].append(d)
+                    self.datas[d.vt_symbol][d.time.date()].append(d)
+
+                if skip:
+                    for symbol, trades_groupby_date in self.datas.items():
+                        for date in list(trades_groupby_date.keys()):
+                            trades = trades_groupby_date[date]
+                            daily_pos = 0
+                            daily_value = 0
+                            for t in trades:
+                                if t.direction == Direction.LONG:
+                                    daily_pos += t.volume
+                                    daily_value += t.price * t.volume
+                                else:
+                                    daily_pos -= t.volume
+                                    daily_value -= t.price * t.volume
+                            else:
+                                if daily_pos != 0:
+                                    tls=trades_groupby_date.pop(date)
+
+                                    for t in tls:
+                                        self.raw_data.remove(t)
 
             @property
             def start_datetime(self):
+                if len(self.raw_data) == 0:
+                    return
+
                 return self.raw_data[0].time
 
             @property
             def end_datetime(self):
+                if len(self.raw_data) == 0:
+                    return
+
                 return self.raw_data[-1].time
 
             @property
@@ -123,45 +160,52 @@ class StrategyReviewer(QtWidgets.QWidget):
             @property
             def cost(self):
                 all_cost = []
-                for vt_symbol, trades in self.datas.items():
+                for vt_symbol, daily_trades in self.datas.items():
                     net_pos = 0
                     net_value = 0
-                    for t in trades:
-                        if t.direction == Direction.SHORT:
-                            net_pos -= t.volume
-                            net_value -= t.volume * t.price
+                    for date, tl in daily_trades.items():
+                        daily_pos = 0
+                        daily_value = 0
+                        for t in tl:
+                            if t.direction == Direction.SHORT:
+                                daily_pos -= t.volume
+                                daily_value -= t.volume * t.price
+                            else:
+                                daily_pos += t.volume
+                                daily_value += t.volume * t.price
                         else:
-                            net_pos += t.volume
-                            net_value += t.volume * t.price
+                            net_pos += daily_pos
+                            net_value += daily_value
                     else:
                         all_cost.append(f'#<{vt_symbol}>:{net_pos}@{net_value/net_pos if net_pos != 0 else net_value:.1f}  ')
 
                 return '\n'.join(all_cost)
 
-        l = []
+        strategy_dict = {}
         start = self.datetime_from.dateTime().toPyDateTime()
         end = self.datetime_to.dateTime().toPyDateTime()
+        all_datas = []
         for n in strategies:
             datas = database_manager.load_trade_data(start, end, strategy=n)
             if datas:
-                s = strategy(n, datas)
-                l.append(s)
+                s = strategy(n, datas, skip)
+                all_datas.extend(s.raw_data)
+                strategy_dict[n] = s
         else:
-            datas = database_manager.load_trade_data(start, end)
-            s = strategy('TOTAL', datas)
-            l.append(s)
+            # datas = database_manager.load_trade_data(start, end)
+            s = strategy('TOTAL', all_datas, skip)
+            strategy_dict['TOTAL'] = s
 
-        return l
+        return strategy_dict
 
     def show_trade_chart(self, row, column):
         self.trade.clear_all()
         strategy_name = self.strategy_monitor.item(row, 0).text()
-        if strategy_name == 'TOTAL':
-            strategy_name=None
+        # if strategy_name == 'TOTAL':
+        #     strategy_name=None
+        strategy = self.strategies[strategy_name]
 
-        start = self.datetime_from.dateTime().toPyDateTime()
-        end = self.datetime_to.dateTime().toPyDateTime()
-        self.trade.update_trades(start, end, strategy_name)
+        self.trade.update_trades(strategy.raw_data, strategy_name)
         self.trade.show()
 
 class CheckCell(BaseCell):
@@ -219,13 +263,14 @@ class TradeMonitor(BaseMonitor):
 
 from vnpy.app.realtime_monitor.ui.baseQtItems import MarketDataChartWidget
 class TradeChartDialog(QtWidgets.QDialog):
-    def __init__(self, main_engine, event_engine):
+    def __init__(self, main_engine, event_engine, skip_opentrade=False):
         super().__init__()
         self.main_engine = main_engine
         self.event_engine = event_engine
         self.history_data = None
+        self._skip = skip_opentrade
         self.strategy = ""
-        self.trade_data = {}
+        self.trade_datas = defaultdict(list)
         self.available_tradeid = set()
         self.init_ui()
 
@@ -235,7 +280,7 @@ class TradeChartDialog(QtWidgets.QDialog):
 
         self.tradeChart = TradeMonitor(self.main_engine, self.event_engine)
         self.cost_text = QtWidgets.QTextEdit()
-        self.candleChart = CandleChartDialog()
+        self.candleChart = CandleChartDialog(self.main_engine, self.event_engine)
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.tradeChart)
@@ -246,14 +291,23 @@ class TradeChartDialog(QtWidgets.QDialog):
 
         self.tradeChart.cellDoubleClicked.connect(self.show_candle_chart)
         self.tradeChart.cellClicked.connect(self.check_tradeid)
-        self.candleChart.chart.signal_new_bar_request.connect(self.update_backwark_bars)
 
-    def update_trades(self, start, end, strategy=None):
-        trade_data = database_manager.load_trade_data(start, end, strategy=strategy)
+    # def update_trades(self, start, end, strategy=None):
+    #     trade_data = database_manager.load_trade_data(start, end, strategy=strategy)
+    #     self.strategy = strategy
+    #     self.available_tradeid = set()
+    #     for t in trade_data:
+    #         self.trade_data[t.tradeid] = t
+    #         self.tradeChart.insert_new_row(t)
+    #         self.available_tradeid.add(t.tradeid)
+    #
+    #     self.show_cost()
+
+    def update_trades(self, trade_datas, strategy):
         self.strategy = strategy
         self.available_tradeid = set()
-        for t in trade_data:
-            self.trade_data[t.tradeid] = t
+        for t in trade_datas:
+            self.trade_datas[t.tradeid] = t
             self.tradeChart.insert_new_row(t)
             self.available_tradeid.add(t.tradeid)
 
@@ -274,7 +328,7 @@ class TradeChartDialog(QtWidgets.QDialog):
     def show_cost(self):
         all_cost = defaultdict(lambda: [0, 0, 0])
         for t_id in self.available_tradeid:
-            t = self.trade_data[t_id]
+            t = self.trade_datas[t_id]
             all_cost[t.vt_symbol][2] += 1
             if t.direction == Direction.SHORT:
                 all_cost[t.vt_symbol][0] -= t.volume
@@ -288,81 +342,39 @@ class TradeChartDialog(QtWidgets.QDialog):
 
     def clear_all(self):
         self.strategy = ""
-        self.trade_data = {}
+        self.trade_datas = {}
         self.tradeChart.clearContents()
 
     def show_candle_chart(self, row, column):
         self.candleChart.clear_all()
         tradeid = self.tradeChart.item(row, 0).text()
-        symbol = self.trade_data[tradeid].symbol
-        exchange = self.trade_data[tradeid].exchange
-        trade_data = [t for t in self.trade_data.values() if t.symbol == symbol and t.exchange == exchange]
-        trade_data.sort(key=lambda t:t.time)
-        time = self.trade_data[tradeid].time
+        symbol = self.trade_datas[tradeid].symbol
+        exchange = self.trade_datas[tradeid].exchange
+        trade_datas = [t for t in self.trade_datas.values() if t.symbol == symbol and t.exchange == exchange]
+        trade_datas.sort(key=lambda t:t.time)
+        time = self.trade_datas[tradeid].time
         start = time.replace(hour=0, minute=0, second=0) - dt.timedelta(minutes=120)
-        end = min(time.replace(hour=23, minute=59, second=59) + dt.timedelta(minutes=120),
-                  dt.datetime.now())
+        # end = min(time.replace(hour=23, minute=59, second=59) + dt.timedelta(minutes=120),
+        #           dt.datetime.now())
 
-        history_data = database_manager.load_bar_data(symbol, exchange, Interval.MINUTE, start=start, end=end)
-
-        if len(history_data) > 0 and len(history_data)/ ((end - start).total_seconds() / 60) > 0.7:
-            self.candleChart.update_all(history_data, trade_data, [])
-        else:
-            req = HistoryRequest(symbol, exchange, start, end, Interval.MINUTE)
-            gateway = self.main_engine.get_gateway('IB')
-            if gateway and gateway.api.status:
-                self.history_data = history_data = gateway.query_history(req)
-                self.candleChart.update_all(history_data, trade_data, [])
-            database_manager.save_bar_data(history_data)
+        self.candleChart.update_all(symbol, exchange, trade_datas, start)
 
         self.candleChart.show()
 
-    def update_backwark_bars(self, n):
-        chart = self.candleChart.chart
-        last_bar = chart._manager.get_bar(chart.last_ix)
-        if last_bar:
-            n = min(n, 60)
-            symbol = last_bar.symbol
-            exchange = last_bar.exchange
-            print(last_bar.datetime, self.candleChart.last_end)
-            start = max(last_bar.datetime, self.candleChart.last_end)
-
-            if start >= dt.datetime.now():
-                return
-
-            end = start + n * dt.timedelta(minutes=1)
-            if not self.checkTradeTime(end.time()):
-                history_data = database_manager.load_bar_data(symbol, exchange, Interval.MINUTE, start=start, end=end)
-
-                if len(history_data) == 0 or len(history_data) / ((end - start).total_seconds() / 60) < 0.7:
-                    req = HistoryRequest(symbol, exchange, start, end, Interval.MINUTE)
-                    gateway = self.main_engine.get_gateway('IB')
-                    if gateway and gateway.api.status:
-                        history_data = gateway.query_history(req)
-                    database_manager.save_bar_data(history_data)
-
-                for bar in history_data:
-                    self.candleChart.chart.update_bar(bar)
-
-            self.candleChart.last_end = end
-
-    @staticmethod
-    def checkTradeTime(t):
-        TRADINGHOURS = [(dt.time(3, 0), dt.time(9, 15)),
-                        (dt.time(12, 0), dt.time(13, 0)),
-                        (dt.time(16, 30), dt.time(17, 15))]
-        for tp in TRADINGHOURS:
-            if tp[0] <= t < tp[1]:
-                return True
-
-        return False
-
 
 class CandleChartDialog(QtWidgets.QDialog):
-    def __init__(self):
+    def __init__(self,  main_engine, event_engine,):
         """"""
         super().__init__()
+        self.main_engine = main_engine
+        self.event_engine = event_engine
         self.last_end = dt.datetime(1970, 1, 1)
+        self._interval = Interval.HOUR
+        self._symbol = None
+        self._exchange = None
+        self._start = None
+        self._end = None
+        self.trade_datas = []
         self.init_ui()
 
     def init_ui(self):
@@ -376,17 +388,141 @@ class CandleChartDialog(QtWidgets.QDialog):
         self.indicator_combo.addItems(self.chart.indicators.keys())
         self.indicator_combo.currentTextChanged.connect(self.chart.change_indicator)
 
+        self.interval_combo = QtWidgets.QComboBox()
+        for i in Interval:
+            self.interval_combo.addItem(i.value, i)
+        self.interval_combo.setCurrentText(Interval.HOUR.value)
+
+        self.forward_btn = QtWidgets.QPushButton('←')
+
+        self.interval_combo.currentIndexChanged.connect(self.change_interval)
+        self.forward_btn.clicked.connect(self.forward)
+        self.chart.signal_new_bar_request.connect(self.update_backward_bars)
+
         # Set layout
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.indicator_combo)
+        vbox.addWidget(self.interval_combo)
+        vbox.addWidget(self.forward_btn)
         vbox.addWidget(self.chart)
         self.setLayout(vbox)
 
+    def change_interval(self, interval):
+        old_tp = self.interval2timdelta(self._interval)
+        self._interval = self.interval_combo.itemData(interval)
+        new_tp = self.interval2timdelta(self._interval)
+        symbol = self._symbol
+        exchange = self._exchange
+        trade_datas = self.trade_datas
+        if new_tp > old_tp:
+            start = self._start
+            end = self._end
+        else:
+            cur_bar = self.chart._manager.get_bar(self.chart._cursor._x)
+            start = cur_bar.datetime
+            end=None
+
+        self.clear_all()
+        self.update_all(symbol, exchange, trade_datas, start, end)
+
+    def update_all(self, symbol, exchange, trade_datas, start, end=None):
+        self._symbol = symbol
+        self._exchange = exchange
+        self._start = start
+        interval = self._interval
+        tp = self.interval2timdelta(self._interval)
+
+        backward_n = max(60 * tp, dt.timedelta(hours=25))
+        end = start + backward_n if end is None else end
+        history_data = database_manager.load_bar_data(symbol, exchange, interval, start=start, end=end)
+        self.trade_datas = trade_datas
+
+        if len(history_data) > 0 and len(history_data)/ ((end - start).total_seconds() / 60) > 0.7:
+            self.chart.update_all(history_data, trade_datas, [])
+        else:
+            req = HistoryRequest(symbol, exchange, start, end, interval)
+            gateway = self.main_engine.get_gateway('IB')
+            if gateway and gateway.api.status:
+                self.history_data = history_data = gateway.query_history(req)
+                self.chart.update_all(history_data, trade_datas, [])
+            database_manager.save_bar_data(history_data)
+
+        if len(self.history_data) >0:
+            self._end = self.history_data[-1].datetime
+
+    def forward(self):
+        start = self._start
+        symbol = self._symbol
+        exchange = self._exchange
+        interval = self._interval
+        end = self._end
+
+        if all([symbol, exchange, interval, start, end]):
+            tp = self.interval2timdelta(interval)
+            forward_n = max(60 * tp, dt.timedelta(hours=25))
+            self._start = start - forward_n
+            self.chart.clear_all()
+            self.update_all(symbol, exchange, self.trade_datas, self._start, end)
+
     def clear_all(self):
+        self._symbol = None
+        self._exchange = None
+        self._start = None
+        self._end = None
+        self.trade_datas = []
         self.chart.clear_all()
 
-    def update_all(self, history, trades, orders):
-        self.chart.update_all(history, trades, orders)
+    def update_backward_bars(self, n):
+        chart = self.chart
+        last_bar = chart._manager.get_bar(chart.last_ix)
+        if last_bar:
+            symbol = last_bar.symbol
+            exchange = last_bar.exchange
+            if self._end:
+                start = max(last_bar.datetime, self._end)
+            else:
+                start = last_bar.datetime
+
+
+            if start >= dt.datetime.now():
+                return
+
+            tp = self.interval2timdelta(self._interval)
+            backward_n = max(tp * n, dt.timedelta(minutes=60))
+            end = start + backward_n
+            if not self.checkTradeTime(end.time()):
+                history_data = database_manager.load_bar_data(symbol, exchange, self._interval, start=start, end=end)
+
+                if len(history_data) == 0 or len(history_data) / ((end - start).total_seconds() / 60) < 0.7:
+                    req = HistoryRequest(symbol, exchange, start, end, self._interval)
+                    gateway = self.main_engine.get_gateway('IB')
+                    if gateway and gateway.api.status:
+                        history_data = gateway.query_history(req)
+                    database_manager.save_bar_data(history_data)
+
+                for bar in history_data:
+                    self.chart.update_bar(bar)
+
+            self._end = end
+
+    @staticmethod
+    def checkTradeTime(t):
+        TRADINGHOURS = [(dt.time(3, 0), dt.time(9, 15)),
+                        (dt.time(12, 0), dt.time(13, 0)),
+                        (dt.time(16, 30), dt.time(17, 15))]
+        for tp in TRADINGHOURS:
+            if tp[0] <= t < tp[1]:
+                return True
+
+        return False
+
+    @staticmethod
+    def interval2timdelta(interval):
+        return {Interval.MINUTE: dt.timedelta(minutes=1), Interval.HOUR: dt.timedelta(hours=1),
+                  Interval.DAILY: dt.timedelta(days=1), Interval.WEEKLY: dt.timedelta(weeks=1)}[interval]
+
+    # def update_all(self, history, trades, orders):
+    #     self.chart.update_all(history, trades, orders)
 
 
 class DailyResultChart(QtWidgets.QDialog):

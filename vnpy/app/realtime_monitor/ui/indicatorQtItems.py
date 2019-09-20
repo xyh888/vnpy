@@ -384,8 +384,8 @@ class INCItem(ChartItem):
         self.last_ix = 0
         self.last_picture = QtGui.QPicture()
         self.incs = defaultdict(dict)
-        self.br_max = -np.inf
-        self.br_min = np.inf
+        self.br_max = 0
+        self.br_min = 0
 
 
 class RSICurveItem(ChartItem):
@@ -457,7 +457,7 @@ class RSICurveItem(ChartItem):
         """"""
         rect = QtCore.QRectF(
             0,
-            self.br_max,
+            self.br_min,
             len(self._bar_picutures),
             self.br_max - self.br_min
         )
@@ -501,6 +501,121 @@ class RSICurveItem(ChartItem):
         self.br_max = -np.inf
         self.br_min = np.inf
 
+class PNLCurveItem(ChartItem):
+    name = 'pnl'
+    plot_name = 'pnl'
+    PNL_COLORS = {"up": pg.mkPen(color=(0, 0, 255), width=PEN_WIDTH),
+                 "down": pg.mkPen(color=(255, 255, 0), width=PEN_WIDTH)}
+    def __init__(self, manager: BarManager):
+        """"""
+        super().__init__(manager)
+        # self.periods = [6, 12, 24]
+        self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self.ix_pnl_map = defaultdict(int)
+        self.init_setting()
+        self.last_ix = 0
+        self.br_max = -9999
+        self.br_min = 9999
+        self.last_picture = QtGui.QPicture()
+
+    def init_setting(self):
+        setting = VISUAL_SETTING.get(self.name, {})
+        if 'pen' in setting:
+            pen_settings = setting['pen']
+            for p in self.PNL_COLORS:
+                self.PNL_COLORS[p] = pg.mkPen(**pen_settings[str(p)])
+
+    def set_ix_pos_map(self, ix_pos_map):
+        self.ix_pos_map = ix_pos_map
+
+    def _draw_bar_picture(self, ix: int, bar: BarData) -> QtGui.QPicture:
+        """"""
+        # Create objects
+
+        pre_bar = self._manager.get_bar(ix-2)
+        bar = self._manager.get_bar(ix-1)
+
+        if not pre_bar:
+            return self.last_picture
+
+        pnl_picture = QtGui.QPicture()
+        painter = QtGui.QPainter(pnl_picture)
+
+        # Draw volume body
+        pre_pos = self.ix_pos_map[ix-2]
+        pos = self.ix_pos_map[ix-1]
+        if pre_pos[0] == 0:
+            pre_pnl = -pre_pos[1]
+        else:
+            pre_pnl = pre_bar.close_price * pre_pos[0] - pre_pos[1]
+
+        if pos[0] == 0:
+            pnl = -pos[1]
+        else:
+            pnl = bar.close_price * pos[0] -  pos[1]
+
+        self.ix_pnl_map[ix-1] = pnl
+        self.br_max = max(self.br_max, pnl)
+        self.br_min = min(self.br_min, pnl)
+
+        pnl_sp = QtCore.QPointF(ix-2, pre_pnl)
+        pnl_ep = QtCore.QPointF(ix-1, pnl)
+        drawPath(painter, pnl_sp, pnl_ep, self.PNL_COLORS['up'])
+
+        # Finish
+        painter.end()
+        self.last_ix = ix
+        self.last_picture = pnl_picture
+        return pnl_picture
+
+    def boundingRect(self) -> QtCore.QRectF:
+        """"""
+        rect = QtCore.QRectF(
+            0,
+            self.br_min - 10,
+            len(self._bar_picutures),
+            (self.br_max - self.br_min) + 10
+        )
+
+        return rect
+
+    def get_y_range(self, min_ix: int = None, max_ix: int = None) -> Tuple[float, float]:
+        """
+        Get range of y-axis with given x-axis range.
+
+        If min_ix and max_ix not specified, then return range with whole data set.
+        """
+        min_ix = 0 if min_ix is None else min_ix
+        max_ix = self.last_ix if max_ix is None else max_ix
+
+        min_v = 9999
+        max_v = -9999
+
+        for i in range(min_ix, max_ix):
+            pnl = self.ix_pnl_map[i]
+            min_v = min(min_v, pnl)
+            max_v = max(max_v, pnl)
+
+        return min_v - 10 , max_v + 10
+
+    def get_info_text(self, ix: int) -> str:
+        """
+        Get information text to show by cursor.
+        """
+        text = self.ix_pnl_map[ix]
+        return f"PNL: \n{text}"
+
+    def clear_all(self) -> None:
+        """
+        Clear all data in the item.
+        """
+        super().clear_all()
+        self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self.ix_pnl_map = defaultdict(int)
+        self.last_ix = 0
+        self.last_picture = QtGui.QPicture()
+        self.br_max = -9999
+        self.br_min = 9999
 
 class SplitLineItem(ChartItem):
     name = 'split'

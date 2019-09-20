@@ -123,6 +123,7 @@ INTERVAL_VT2IB = {
     Interval.MINUTE: "1 min",
     Interval.HOUR: "1 hour",
     Interval.DAILY: "1 day",
+    Interval.WEEKLY: "1 week"
 }
 
 
@@ -216,6 +217,7 @@ class IbApi(EWrapper):
         self.orders = {}
         self.accounts = {}
         self.contracts = {}
+        self.ibcontracts = {}
 
         self.tick_exchange = {}
 
@@ -528,6 +530,7 @@ class IbApi(EWrapper):
         self.gateway.on_contract(contract)
 
         self.contracts[contract.vt_symbol] = contract
+        self.ibcontracts[contract.vt_symbol] = contractDetails.contract
 
     def execDetails(
         self, reqId: int, contract: Contract, execution: Execution
@@ -583,7 +586,10 @@ class IbApi(EWrapper):
         """
         Callback of history data update.
         """
-        dt = datetime.strptime(ib_bar.date, "%Y%m%d %H:%M:%S")
+        if len(ib_bar.date) != 8:
+            dt = datetime.strptime(ib_bar.date, "%Y%m%d %H:%M:%S")
+        else:
+            dt = datetime.strptime(ib_bar.date, "%Y%m%d")
 
         bar = BarData(
             symbol=self.history_req.symbol,
@@ -685,13 +691,15 @@ class IbApi(EWrapper):
             self.gateway.write_log(f"不支持的交易所{req.exchange}")
             return
 
-        ib_contract = Contract()
-        ib_contract.conId = str(req.symbol)
-        ib_contract.exchange = EXCHANGE_VT2IB[req.exchange]
+        ib_contract = self.ibcontracts.get(req.vt_symbol)
+        if not ib_contract:
+            ib_contract = Contract()
+            ib_contract.conId = str(req.symbol)
+            ib_contract.exchange = EXCHANGE_VT2IB[req.exchange]
 
-        # Get contract data from TWS.
-        self.reqid += 1
-        self.client.reqContractDetails(self.reqid, ib_contract)
+            # Get contract data from TWS.
+            self.reqid += 1
+            self.client.reqContractDetails(self.reqid, ib_contract)
 
         # Subscribe tick data and create tick object buffer.
         self.reqid += 1
