@@ -123,6 +123,7 @@ INTERVAL_VT2IB = {
     Interval.MINUTE: "1 min",
     Interval.HOUR: "1 hour",
     Interval.DAILY: "1 day",
+    Interval.WEEKLY: "1 week"
 }
 
 
@@ -585,7 +586,10 @@ class IbApi(EWrapper):
         """
         Callback of history data update.
         """
-        dt = datetime.strptime(ib_bar.date, "%Y%m%d %H:%M:%S")
+        if len(ib_bar.date) != 8:
+            dt = datetime.strptime(ib_bar.date, "%Y%m%d %H:%M:%S")
+        else:
+            dt = datetime.strptime(ib_bar.date, "%Y%m%d")
 
         bar = BarData(
             symbol=self.history_req.symbol,

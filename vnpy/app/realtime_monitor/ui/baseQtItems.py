@@ -31,6 +31,7 @@ from typing import Tuple, Callable
 from collections import defaultdict
 from vnpy.trader.ui.widget import BaseMonitor, TimeCell, BaseCell
 from vnpy.app.realtime_monitor.ui.indicatorQtItems import INDICATOR
+from vnpy.app.realtime_monitor.ui.indicatorQtItems import PNLCurveItem
 import talib
 from contextlib import contextmanager
 
@@ -99,10 +100,12 @@ class MarketDataChartWidget(ChartWidget):
     def init_chart_ui(self):
         self.add_plot("candle", hide_x_axis=True, minimum_height=200)
         self.add_plot("indicator", hide_x_axis=True, maximum_height=120)
+        self.add_plot("pnl", hide_x_axis=True, maximum_height=80)
         self.add_plot("volume", maximum_height=100)
 
         self.get_plot("candle").showGrid(True, True)
         self.get_plot("indicator").showGrid(True, True)
+        self.get_plot("pnl").showGrid(True, True)
         self.get_plot("volume").showGrid(True, True)
 
         self.add_item(CandleItem, "candle", "candle")
@@ -113,7 +116,7 @@ class MarketDataChartWidget(ChartWidget):
 
         ind = self.indicators[self.current_indicator]
         self.add_item(ind, ind.name, ind.plot_name)
-
+        self.add_item(PNLCurveItem, PNLCurveItem.name, PNLCurveItem.plot_name)
         self.add_item(VolumeItem, "volume", "volume")
         self.add_cursor()
 
@@ -186,6 +189,7 @@ class MarketDataChartWidget(ChartWidget):
         self.update_trades(trades)
         self.update_orders(orders)
         self.update_pos()
+        self.update_pnl()
 
     def update_history(self, history: list):
         """"""
@@ -359,6 +363,13 @@ class MarketDataChartWidget(ChartWidget):
                     net_p -= t.volume
                     net_value -= t.volume * t.price
             self.ix_pos_map[ix] = (net_p, net_value)
+
+    def update_pnl(self):
+        pnl_item = self._items.get('pnl')
+        if pnl_item:
+            pnl_item.clear_all()
+            pnl_item.set_ix_pos_map(self.ix_pos_map)
+            pnl_item.update_history(self._manager.get_all_bars())
 
     def init_splitLine(self):
         self.splitLines = []
