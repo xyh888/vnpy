@@ -73,15 +73,17 @@ class MACurveItem(ChartItem):
 
         # Draw volume body
         for p in self.MA_PARAMS:
+            if self._arrayManager.close[-(p + 1)] == 0:
+                self.mas[p][ix - 1] = np.nan
+                continue
+
             sma=self._arrayManager.ma(p, True)
             pre_ma = sma[-2]
             ma = sma[-1]
             self.mas[p][ix-1] = ma
-            if np.isnan(pre_ma) or np.isnan(ma):
-                continue
 
-            sp = QtCore.QPointF(ix-2, sma[-2])
-            ep = QtCore.QPointF(ix-1, sma[-1])
+            sp = QtCore.QPointF(ix-2, pre_ma)
+            ep = QtCore.QPointF(ix-1, ma)
             drawPath(painter, sp, ep, self.MA_COLORS[p])
 
         # Finish

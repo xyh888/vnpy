@@ -381,11 +381,22 @@ class MarketDataChartWidget(ChartWidget):
             self.ix_holding_pos_map[ix] = (net_p, holding_value)
 
     def update_pnl(self):
+        pnl_plot = self._plots.get('pnl')
         pnl_item = self._items.get('pnl')
-        if pnl_item:
+        if pnl_plot and pnl_item:
             pnl_item.clear_all()
             pnl_item.set_ix_pos_map(self.ix_pos_map)
             pnl_item.update_history(self._manager.get_all_bars())
+
+            min_value, max_value = pnl_item.get_y_range()
+
+            pnl_plot.setLimits(
+                xMin=-1,
+                xMax=self._manager.get_count(),
+                yMin=min_value,
+                yMax=max_value
+            )
+
 
     def init_splitLine(self):
         self.splitLines = []
