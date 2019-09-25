@@ -9,6 +9,8 @@ from vnpy.trader.constant import Status, Direction
 from vnpy.trader.object import PositionData
 from vnpy.trader.utility import load_json, save_json
 from vnpy.trader.ui import QtWidgets
+from threading import Lock
+import datetime as dt
 
 
 APP_NAME = "KRRiskManager"
@@ -21,7 +23,8 @@ class KRRiskManagerEngine(BaseEngine):
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """"""
         super().__init__(main_engine, event_engine, APP_NAME)
-
+        self._lock = Lock()
+        self._trade_date = dt.date.today()
         self.active = False
 
         self.order_flow_count = 0
@@ -32,10 +35,10 @@ class KRRiskManagerEngine(BaseEngine):
 
         self.order_size_limit = 5
 
-        self.trade_count = 0
         self.trade_limit = 50
+        self.trade_count = 0
 
-        self.order_cancel_limit = 500
+        self.order_cancel_limit = 0
         self.order_cancel_counts = defaultdict(int)
 
         self.active_order_limit = 10
@@ -54,15 +57,24 @@ class KRRiskManagerEngine(BaseEngine):
         self._send_order = self.main_engine.send_order
         self.main_engine.send_order = self.send_order
 
+    def daily_reset(self):
+        with self._lock:
+            self._trade_date = dt.date.today()
+            self.trade_count = 0
+            self.order_cancel_counts = defaultdict(int)
+            self.exposed_positions = defaultdict(int)
+
     def send_order(self, req: OrderRequest, gateway_name: str):
         """"""
         result = self.check_risk(req, gateway_name)
         if not result:
-            QtWidgets.QMessageBox.warning(
-                None, "KRRiskManager", f"交易风控触发, 拒绝<{gateway_name}>订单：\n"
-                f"#{req.vt_symbol}{'↓' if req.direction == Direction.SHORT else '↑'}{req.volume}@{req.price}",
-                QtWidgets.QMessageBox.Ok
-            )
+            # QtWidgets.QMessageBox.warning(
+            #     None, "KRRiskManager", f"交易风控触发, 拒绝<{gateway_name}>订单：\n"
+            #     f"#{req.vt_symbol}{'↓' if req.direction == Direction.SHORT else '↑'}{req.volume}@{req.price}",
+            #     QtWidgets.QMessageBox.Ok
+            # )
+            self.write_log(f"交易风控触发, 拒绝<{gateway_name}>订单：\n"
+                f"#{req.vt_symbol}{'↓' if req.direction == Direction.SHORT else '↑'}{req.volume}@{req.price}")
             return ""
 
         return self._send_order(req, gateway_name)
@@ -137,6 +149,9 @@ class KRRiskManagerEngine(BaseEngine):
             self.order_flow_count = 0
             self.order_flow_timer = 0
 
+        if dt.date.today() != self._trade_date:
+            self.daily_reset()
+
     def process_position_event(self, event: Event):
         position = event.data
 
@@ -187,7 +202,9 @@ class KRRiskManagerEngine(BaseEngine):
             return False
 
         # Check order cancel counts
-        if req.symbol in self.order_cancel_counts and self.order_cancel_counts[req.symbol] >= self.order_cancel_limit:
+        if self.order_cancel_limit > 0 \
+                and req.symbol in self.order_cancel_counts \
+                and self.order_cancel_counts[req.symbol] >= self.order_cancel_limit:
             self.write_log(
                 f"当日{req.symbol}撤单次数{self.order_cancel_counts[req.symbol]}，超过限制{self.order_cancel_limit}")
             return False

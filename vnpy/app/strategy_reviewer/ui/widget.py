@@ -350,7 +350,7 @@ class TradeChartDialog(QtWidgets.QDialog):
         tradeid = self.tradeChart.item(row, 0).text()
         symbol = self.trade_datas[tradeid].symbol
         exchange = self.trade_datas[tradeid].exchange
-        trade_datas = [t for t in self.trade_datas.values() if t.symbol == symbol and t.exchange == exchange]
+        trade_datas = [t for t in self.trade_datas.values() if t.symbol == symbol and t.exchange == exchange and t.tradeid in self.available_tradeid]
         trade_datas.sort(key=lambda t:t.time)
         time = self.trade_datas[tradeid].time
         start = time.replace(hour=0, minute=0, second=0) - dt.timedelta(minutes=120)
@@ -502,6 +502,11 @@ class CandleChartDialog(QtWidgets.QDialog):
 
                 for bar in history_data:
                     self.chart.update_bar(bar)
+
+                last_bar_after_update = chart._manager.get_bar(chart.last_ix)
+                self.chart.update_trades([t for t in self.trade_datas if start <= t.time < last_bar_after_update.datetime])
+                self.chart.update_pos()
+                self.chart.update_pnl()
 
             self._end = end
 
