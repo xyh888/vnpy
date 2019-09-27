@@ -11,7 +11,6 @@ from vnpy.trader.constant import Interval
 from vnpy.trader.utility import extract_vt_symbol
 from vnpy.trader.object import HistoryRequest
 # from vnpy.trader.rqdata import rqdata_client
-from vnpy.trader.ibdata import ibdata_client
 from vnpy.trader.database import database_manager
 from vnpy.app.ib_cta_strategy import (
     CtaTemplate,
@@ -57,15 +56,6 @@ class BacktesterEngine(BaseEngine):
         self.backtesting_engine.output = self.write_log
 
         self.write_log("策略文件加载完成")
-
-
-    def init_ibdata(self):
-        """
-        Init RQData client.
-        """
-        result = ibdata_client.init()
-        if result:
-            self.write_log("IBData数据接口初始化成功")
 
     def write_log(self, msg: str):
         """"""
@@ -355,8 +345,7 @@ class BacktesterEngine(BaseEngine):
             data = self.main_engine.query_history(req, contract.gateway_name)
         # Otherwise use RQData to query data
         else:
-            ibdata_client.init()
-            data = ibdata_client.query_history(req)
+            data = []
 
         if data:
             database_manager.save_bar_data(data)

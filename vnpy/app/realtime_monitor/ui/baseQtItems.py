@@ -89,6 +89,7 @@ class MarketDataChartWidget(ChartWidget):
         self.last_ix = -1
         self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self.ix_holding_pos_map = defaultdict(lambda :(0, 0))
         self.vt_symbol = None
         self.bar = None
         self.last_tick = None
@@ -175,9 +176,11 @@ class MarketDataChartWidget(ChartWidget):
         info.hide()
         trades = self.ix_trades_map[self._cursor._x]
         pos = self.ix_pos_map[self._cursor._x]
-        pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}\n'
+        holding_pos = self.ix_holding_pos_map[self._cursor._x]
+        pos_info_text = f'Pos: {pos[0]}@{pos[1]/pos[0] if pos[0] != 0 else pos[1]:.1f}'
+        holding_pos_text = f'Holding: {holding_pos[0]}@{holding_pos[1]/holding_pos[0] if holding_pos[0] != 0 else holding_pos[1]:.1f}'
         trade_info_text = '\n'.join(f'{t.time}: {"↑" if t.direction == Direction.LONG else "↓"}{t.volume}@{t.price:.1f}' for t in trades)
-        info.setText(pos_info_text + trade_info_text)
+        info.setText('\n'.join([pos_info_text, holding_pos_text, trade_info_text]))
         view = self._cursor._views['candle']
         rect = view.sceneBoundingRect()
         top_middle = view.mapSceneToView(QPointF(rect.right() - rect.width()/2, rect.top()))
@@ -246,6 +249,7 @@ class MarketDataChartWidget(ChartWidget):
             self.last_ix += 1
             self.dt_ix_map[bar.datetime] = self.last_ix
             self.ix_pos_map[self.last_ix] = self.ix_pos_map[self.last_ix - 1]
+            self.ix_holding_pos_map[self.last_ix] = self.ix_holding_pos_map[self.last_ix - 1]
             super().update_bar(bar)
         else:
             candle = self._items.get('candle')
@@ -316,6 +320,11 @@ class MarketDataChartWidget(ChartWidget):
             v = -trade.volume * trade.price
         self.ix_pos_map[ix] = (self.ix_pos_map[ix][0] + p, self.ix_pos_map[ix][1] + v)
 
+        if self.ix_pos_map[ix][0] == 0:
+            self.ix_holding_pos_map[ix] = (0, 0)
+        else:
+            self.ix_holding_pos_map[ix] = (self.ix_holding_pos_map[ix][0] + p, self.ix_holding_pos_map[ix][1] + v)
+
 
     def update_order(self, order: OrderData):
         if order.status in (Status.NOTTRADED, Status.PARTTRADED):
@@ -353,23 +362,41 @@ class MarketDataChartWidget(ChartWidget):
     def update_pos(self):
         net_p = 0
         net_value = 0
+        holding_value = 0
         for ix in self.dt_ix_map.values():
             trades = self.ix_trades_map[ix]
             for t in trades:
                 if t.direction == Direction.LONG:
                     net_p += t.volume
                     net_value += t.volume * t.price
+                    holding_value += t.volume * t.price
                 else:
                     net_p -= t.volume
                     net_value -= t.volume * t.price
+                    holding_value -= t.volume * t.price
+            else:
+                if net_p == 0:
+                    holding_value = 0
             self.ix_pos_map[ix] = (net_p, net_value)
+            self.ix_holding_pos_map[ix] = (net_p, holding_value)
 
     def update_pnl(self):
+        pnl_plot = self._plots.get('pnl')
         pnl_item = self._items.get('pnl')
-        if pnl_item:
+        if pnl_plot and pnl_item:
             pnl_item.clear_all()
             pnl_item.set_ix_pos_map(self.ix_pos_map)
             pnl_item.update_history(self._manager.get_all_bars())
+
+            min_value, max_value = pnl_item.get_y_range()
+
+            pnl_plot.setLimits(
+                xMin=-1,
+                xMax=self._manager.get_count(),
+                yMin=min_value,
+                yMax=max_value
+            )
+
 
     def init_splitLine(self):
         self.splitLines = []
@@ -468,6 +495,7 @@ class MarketDataChartWidget(ChartWidget):
         self.trade_scatter.clear()
         self.ix_trades_map = defaultdict(list)
         self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self.ix_holding_pos_map = defaultdict(lambda :(0, 0))
         self._updated = True
 
         candle_plot = self.get_plot("candle")
