@@ -189,13 +189,15 @@ class TradeChartDialog(QtWidgets.QDialog):
         vsplit = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vsplit.addWidget(self.tradeChart)
         vsplit.addWidget(self.cost_text)
-        vsplit.setStretchFactor(0, 8)
-        vsplit.setStretchFactor(1, 2)
+        vsplit.addWidget(self.candleChart)
+        vsplit.setStretchFactor(0, 3)
+        vsplit.setStretchFactor(1, 1)
+        vsplit.setStretchFactor(2, 6)
 
         hsplit.addWidget(self.dailyChart)
         hsplit.addWidget(vsplit)
-        hsplit.setStretchFactor(0, 3)
-        hsplit.setStretchFactor(1, 7)
+        hsplit.setStretchFactor(0, 4)
+        hsplit.setStretchFactor(1, 6)
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(hsplit)
 
@@ -296,7 +298,14 @@ class TradeChartDialog(QtWidgets.QDialog):
 
         self.candleChart.update_all(symbol, exchange, trade_datas, start)
 
-        self.candleChart.show()
+        # self.candleChart.show()
+
+    def closeEvent(self, QCloseEvent):
+        super().closeEvent(QCloseEvent)
+
+        self.tradeChart.clearContents()
+        self.cost_text.clear()
+        self.candleChart.clear_all()
 
 
 class CandleChartDialog(QtWidgets.QDialog):
@@ -317,7 +326,6 @@ class CandleChartDialog(QtWidgets.QDialog):
     def init_ui(self):
         """"""
         self.setWindowTitle("策略K线图表")
-        self.resize(1400, 800)
 
         # Create chart widget
         self.chart = MarketDataChartWidget()
@@ -337,10 +345,12 @@ class CandleChartDialog(QtWidgets.QDialog):
         self.chart.signal_new_bar_request.connect(self.update_backward_bars)
 
         # Set layout
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addWidget(self.indicator_combo)
+        hbox.addWidget(self.interval_combo)
+        hbox.addWidget(self.forward_btn)
         vbox = QtWidgets.QVBoxLayout()
-        vbox.addWidget(self.indicator_combo)
-        vbox.addWidget(self.interval_combo)
-        vbox.addWidget(self.forward_btn)
+        vbox.addLayout(hbox)
         vbox.addWidget(self.chart)
         self.setLayout(vbox)
 
