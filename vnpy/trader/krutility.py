@@ -8,14 +8,16 @@ import json
 from pathlib import Path
 from typing import Callable
 from decimal import Decimal
-
+from dataclasses import dataclass
 import numpy as np
 import talib
 
 from .object import BarData, TickData
 from .constant import Exchange, Interval
-
+from mongoengine import DateTimeField, Document, FloatField, StringField, ListField
 import datetime
+from typing import List, Sequence
+from vnpy.trader.database import database_manager
 
 
 class ArrayManager(object):
@@ -220,3 +222,92 @@ class ArrayManager(object):
         if array:
             return aroon_up, aroon_down
         return aroon_up[-1], aroon_down[-1]
+
+
+@dataclass
+class TraitData:
+    symbol: str
+    exchange: Exchange
+    start: datetime
+    end: datetime
+    interval: Interval
+    data: List[float]
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+class DbTraitData(Document):
+    """
+    Candlestick bar data for database storage.
+
+    Index is defined unique with datetime, interval, symbol
+    """
+
+    symbol: str = StringField()
+    exchange: str = StringField()
+    start: datetime = DateTimeField()
+    end: datetime = DateTimeField()
+    interval: str = StringField()
+
+    data: list = ListField(FloatField())
+
+    meta = {
+        "indexes": [
+            {
+                "fields": ("symbol", "exchange", "start", "end"),
+            }
+        ]
+    }
+
+    @staticmethod
+    def from_trait(trait: TraitData):
+        """
+        Generate DbBarData object from BarData.
+        """
+        db_trait = DbTraitData()
+
+        db_trait.symbol = trait.symbol
+        db_trait.exchange = trait.exchange.value
+        db_trait.start = trait.start
+        db_trait.end  = trait.end
+        db_trait.interval = trait.interval.value
+        db_trait.data = trait.data
+
+        return db_trait
+
+    def to_trait(self):
+        """
+        Generate BarData object from DbBarData.
+        """
+        trait = TraitData(
+            symbol=self.symbol,
+            exchange=Exchange(self.exchange),
+            start=self.start,
+            end=self.end,
+            interval=Interval(self.interval),
+            data=self.data
+        )
+        return trait
+
+
+def load_trait_data(symbol, exchange: Exchange, interval: Interval=None):
+    params = {'symbol': symbol, 'exchange': exchange.value}
+
+    if interval:
+        params['interval'] = interval
+
+    data = DbTraitData.objects(**params)
+
+    return [t.to_trait() for t in data]
+
+def save_trait_data(trait_datas: Sequence[TraitData]):
+
+    for t in trait_datas:
+        updates = database_manager.to_update_param(t)
+        updates.pop("set__vt_symbol")
+        (
+            DbTraitData.objects(
+                symbol=t.symbol, exchange=t.exchange.value, interval=t.interval.value, start=t.start, end=t.end
+            ).update_one(upsert=True, **updates)
+        )

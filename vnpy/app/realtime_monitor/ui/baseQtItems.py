@@ -244,6 +244,10 @@ class MarketDataChartWidget(ChartWidget):
         self.last_tick = tick
         self.update_bar(self.bar)
 
+    def clear_tick(self):
+        self.last_tick = None
+        self.last_tick_line.setPos(0)
+
     def update_bar(self, bar: BarData) -> None:
         if bar.datetime not in self.dt_ix_map:
             self.last_ix += 1
@@ -259,6 +263,11 @@ class MarketDataChartWidget(ChartWidget):
 
             if volume:
                 volume.update_bar(bar)
+
+    def clear_bars(self):
+        self.vt_symbol = None
+        self.dt_ix_map.clear()
+        self.last_ix = -1
 
     def update_trades(self, trades: list):
         """"""
@@ -289,6 +298,10 @@ class MarketDataChartWidget(ChartWidget):
                 self.__trade2pos(ix-1, trade)
                 self.trade_scatter.addPoints([scatter])
                 break
+
+    def clear_trades(self):
+        self.trade_scatter.clear()
+        self.ix_trades_map = defaultdict(list)
 
     def update_orders(self, orders: list):
         for o in orders:
@@ -325,7 +338,6 @@ class MarketDataChartWidget(ChartWidget):
         else:
             self.ix_holding_pos_map[ix] = (self.ix_holding_pos_map[ix][0] + p, self.ix_holding_pos_map[ix][1] + v)
 
-
     def update_order(self, order: OrderData):
         if order.status in (Status.NOTTRADED, Status.PARTTRADED):
             line = self.order_lines[order.vt_orderid]
@@ -347,6 +359,13 @@ class MarketDataChartWidget(ChartWidget):
                 line = self.order_lines[order.vt_orderid]
                 candle_plot = self.get_plot("candle")
                 candle_plot.removeItem(line)
+
+    def clear_orders(self):
+        candle_plot = self.get_plot("candle")
+        for _, l in self.order_lines.items():
+            candle_plot.removeItem(l)
+
+        self.order_lines.clear()
 
     def update_tick_line(self, tick: TickData):
         c = tick.last_price
@@ -379,6 +398,10 @@ class MarketDataChartWidget(ChartWidget):
                     holding_value = 0
             self.ix_pos_map[ix] = (net_p, net_value)
             self.ix_holding_pos_map[ix] = (net_p, holding_value)
+
+    def clear_pos(self):
+        self.ix_pos_map = defaultdict(lambda :(0, 0))
+        self.ix_holding_pos_map = defaultdict(lambda :(0, 0))
 
     def update_pnl(self):
         pnl_plot = self._plots.get('pnl')
@@ -489,21 +512,11 @@ class MarketDataChartWidget(ChartWidget):
     def clear_all(self) -> None:
         """"""
         super().clear_all()
-        self.vt_symbol = None
-        self.dt_ix_map.clear()
-        self.last_ix = -1
-        self.trade_scatter.clear()
-        self.ix_trades_map = defaultdict(list)
-        self.ix_pos_map = defaultdict(lambda :(0, 0))
-        self.ix_holding_pos_map = defaultdict(lambda :(0, 0))
+        self.clear_bars()
+        self.clear_trades()
+        self.clear_pos()
         self._updated = True
 
-        candle_plot = self.get_plot("candle")
-        for _, l in self.order_lines.items():
-            candle_plot.removeItem(l)
-
-        self.order_lines.clear()
-
-        self.last_tick_line.setPos(0)
-
+        self.clear_orders()
+        self.clear_tick()
         self.clear_splitLine()
