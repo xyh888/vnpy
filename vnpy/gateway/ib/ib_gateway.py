@@ -273,7 +273,7 @@ class IbApi(EWrapper):
         """
         super(IbApi, self).error(reqId, errorCode, errorString)
 
-        msg = f"信息通知，代码：{errorCode}，内容: {errorString}, ReqID={TickerId}"
+        msg = f"信息通知，代码：{errorCode}，内容: {errorString}, ReqID={reqId}"
         self.gateway.write_log(msg)
 
     def tickPrice(  # pylint: disable=invalid-name
