@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from vnpy.trader.engine import MainEngine
 from vnpy.event import EventEngine
 from vnpy.trader.object import HistoryRequest
-from vnpy.trader.constant import Interval, Direction
+from vnpy.trader.constant import Interval, Direction, Exchange
 from vnpy.chart.base import BLACK_COLOR, CURSOR_COLOR, NORMAL_FONT
 from collections import defaultdict
 from ..engine import APP_NAME
@@ -210,7 +210,7 @@ class TradeChartDialog(QtWidgets.QDialog):
         self.setLayout(hbox)
 
         self.dailyChart.cellDoubleClicked.connect(self.update_daily_trades)
-        self.tradeChart.cellDoubleClicked.connect(self.show_candle_chart)
+        # self.tradeChart.cellDoubleClicked.connect(self.show_candle_chart)
         self.tradeChart.cellClicked.connect(self.check_tradeid)
 
     # def update_trades(self, start, end, strategy=None):
@@ -235,7 +235,7 @@ class TradeChartDialog(QtWidgets.QDialog):
 
 
     def update_daily_trades(self, r, c):
-        date = self.dailyChart.item(r, 0).text()
+        date = self.dailyChart.item(r, 0).get_data().date
         vt_symbol = self.dailyChart.item(r, 1).text()
 
         settlement = self.settlements[(vt_symbol, date)]
@@ -251,6 +251,7 @@ class TradeChartDialog(QtWidgets.QDialog):
             self.tradeChart.resize_columns()
 
         self.show_cost()
+        self.show_candle_chart_by_daily_result(date, vt_symbol, self.trade_datas)
 
     def check_tradeid(self, r, c):
         if c == 0:
@@ -297,6 +298,23 @@ class TradeChartDialog(QtWidgets.QDialog):
         #           dt.datetime.now())
 
         self.candleChart.update_all(symbol, exchange, trade_datas, start)
+
+        # self.candleChart.show()
+
+    def show_candle_chart_by_daily_result(self, date, vt_symbol, trade_datas):
+        self.candleChart.clear_all()
+
+        # trade_datas.sort(key=lambda t:t.time)
+        start = dt.datetime(year=date.year, month=date.month, day=date.day,
+                            hour=0, minute=0, second=0) - dt.timedelta(minutes=120)
+        end = min(dt.datetime(year=date.year, month=date.month, day=date.day,
+                            hour=23, minute=59, second=0) + dt.timedelta(minutes=120),
+                  dt.datetime.now())
+
+        symbol, exchange = vt_symbol.split('.')
+        self.candleChart.update_all(symbol, Exchange(exchange),
+                                    [t for _, t in trade_datas.items()],
+                                    start, end)
 
         # self.candleChart.show()
 

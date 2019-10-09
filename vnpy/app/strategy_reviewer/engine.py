@@ -67,7 +67,7 @@ class StrategyReviewEngine(BaseEngine):
                 trades = strategy.datas[symbol][date]
                 settlement = DailySettlement(name)
                 settlement.settlement(trades)
-                ret[(settlement.vt_symbol, str(settlement.date))] = settlement
+                ret[(settlement.vt_symbol, settlement.date)] = settlement
 
         return ret
 
@@ -103,14 +103,14 @@ class DailySettlement:
             if t.direction == Direction.LONG:
                 self.net_pos += t.volume
                 self.net_value += t.price * t.volume
+                self.holding_value += t.price * t.volume
             else:
                 self.net_pos -= t.volume
                 self.net_value -= t.price * t.volume
-
-            self.holding_value += self.net_value
+                self.holding_value -= t.price * t.volume
 
             if self.net_pos == 0:
-                self.realizedPNL -= self.net_value
+                self.realizedPNL = -self.net_value
                 self.holding_value = 0
                 self.expose_trades.clear()
 
