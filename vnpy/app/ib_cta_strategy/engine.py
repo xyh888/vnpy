@@ -202,7 +202,7 @@ class CtaEngine(BaseEngine):
                 volume=order.volume,
                 stop_orderid=order.vt_orderid,
                 strategy_name=strategy.strategy_name,
-                status=STOP_STATUS_MAP[order.status],
+                status=STOP_STATUS_MAP.get(order.status, ""),
                 vt_orderids=[order.vt_orderid],
             )
             self.call_strategy_func(strategy, strategy.on_stop_order, so)  
