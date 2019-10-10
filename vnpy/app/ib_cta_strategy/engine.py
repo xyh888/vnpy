@@ -209,6 +209,7 @@ class CtaEngine(BaseEngine):
 
         # Call strategy on_order function
         self.call_strategy_func(strategy, strategy.on_order, order)
+        self.write_log(f'ORDER[{order.type.value}]<{order.vt_orderid}>:#{order.vt_symbol} {order.direction.value} {order.volume}@{order.price} -- {order.status}', strategy)
 
     def process_trade_event(self, event: Event):
         """"""
@@ -240,7 +241,7 @@ class CtaEngine(BaseEngine):
 
         # Update GUI
         self.put_strategy_event(strategy)
-
+        self.write_log(f'TRADE<{trade.vt_tradeid}>:#{trade.vt_symbol} {trade.direction.value} {trade.volume}@{trade.price}', strategy)
 
     def process_position_event(self, event: Event):
         """"""
