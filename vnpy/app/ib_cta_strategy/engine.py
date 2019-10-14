@@ -98,9 +98,6 @@ class CtaEngine(BaseEngine):
         self.init_thread = None
         self.init_queue = Queue()
 
-        self.rq_client = None
-        self.rq_symbols = set()
-
         self.vt_tradeids = set()    # for filtering duplicate trade
 
         self.offset_converter = OffsetConverter(self.main_engine)
@@ -110,7 +107,6 @@ class CtaEngine(BaseEngine):
     def init_engine(self):
         """
         """
-        self.init_rqdata()
         self.init_notifier()
         self.load_strategy_class()
         self.load_strategy_setting()
@@ -139,30 +135,6 @@ class CtaEngine(BaseEngine):
             self.notifier.audience = jpush.all_
             self.notifier.platform = jpush.all_
 
-    def init_rqdata(self):
-        """
-        Init RQData client.
-        """
-        result = rqdata_client.init()
-        if result:
-            self.write_log("RQData数据接口初始化成功")
-
-    def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
-    ):
-        """
-        Query bar data from RQData.
-        """
-        req = HistoryRequest(
-            symbol=symbol,
-            exchange=exchange,
-            interval=interval,
-            start=start,
-            end=end
-        )
-        data = rqdata_client.query_history(req)
-        return data
-
     def process_tick_event(self, event: Event):
         """"""
         tick = event.data
@@ -180,7 +152,7 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-        
+        print(order)
         self.offset_converter.update_order(order)
 
         strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
@@ -717,7 +689,7 @@ class CtaEngine(BaseEngine):
         if strategy.trading:
             self.write_log(f"{strategy_name}已经启动，请勿重复操作")
             return
-
+        self.write_log("策略启动", strategy)
         self.call_strategy_func(strategy, strategy.on_start)
         strategy.trading = True
 
@@ -730,7 +702,7 @@ class CtaEngine(BaseEngine):
         strategy = self.strategies[strategy_name]
         if not strategy.trading:
             return
-
+        self.write_log("策略停止", strategy)
         # Call on_stop function of the strategy
         self.call_strategy_func(strategy, strategy.on_stop)
 
