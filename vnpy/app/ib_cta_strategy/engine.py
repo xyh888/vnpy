@@ -546,17 +546,6 @@ class CtaEngine(BaseEngine):
 
         bars = self.main_engine.query_history(req, contract.gateway_name)
 
-        # Query bars from IBData by default, if not found, load from database.
-        # bars = self.query_bar_from_ib(symbol, exchange, interval, start, end)
-        # if not bars:
-        #     bars = database_manager.load_bar_data(
-        #         symbol=symbol,
-        #         exchange=exchange,
-        #         interval=interval,
-        #         start=start,
-        #         end=end,
-        #     )
-
         for bar in bars:
             callback(bar)
 
