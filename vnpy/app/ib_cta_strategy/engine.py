@@ -92,8 +92,8 @@ class CtaEngine(BaseEngine):
         self.strategy_orderid_map = defaultdict(
             set)                    # strategy_name: orderid list
 
-        self.stop_order_count = 0   # for generating stop_orderid
-        self.stop_orders = {}       # stop_orderid: stop_order
+        # self.stop_order_count = 0   # for generating stop_orderid
+        # self.stop_orders = {}       # stop_orderid: stop_order
 
         self.init_thread = None
         self.init_queue = Queue()
@@ -143,7 +143,7 @@ class CtaEngine(BaseEngine):
         if not strategies:
             return
 
-        self.check_stop_order(tick)
+        # self.check_stop_order(tick)
 
         for strategy in strategies:
             if strategy.inited:
@@ -152,7 +152,6 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-        print(order)
         self.offset_converter.update_order(order)
 
         strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
@@ -239,69 +238,69 @@ class CtaEngine(BaseEngine):
             self.write_log(f'KRPush未配置,无法推送->{notification}')
 
 
-    def check_stop_order(self, tick: TickData):
-        """"""
-        for stop_order in list(self.stop_orders.values()):
-            if stop_order.vt_symbol != tick.vt_symbol:
-                continue
-
-            long_triggered = (
-                stop_order.direction == Direction.LONG and tick.last_price >= stop_order.price
-            )
-            short_triggered = (
-                stop_order.direction == Direction.SHORT and tick.last_price <= stop_order.price
-            )
-
-            if long_triggered or short_triggered:
-                strategy = self.strategies[stop_order.strategy_name]
-
-                # To get excuted immediately after stop order is
-                # triggered, use limit price if available, otherwise
-                # use ask_price_5 or bid_price_5
-                if stop_order.direction == Direction.LONG:
-                    if tick.limit_up:
-                        price = tick.limit_up
-                    elif tick.ask_price_5:
-                        price = tick.ask_price_5
-                    else:
-                        price = int(tick.ask_price_1 * 1.01)
-                else:
-                    if tick.limit_down:
-                        price = tick.limit_down
-                    elif tick.bid_price_5:
-                        price = tick.bid_price_5
-                    else:
-                        price = int(tick.bid_price_1 * 0.99)
-                
-                contract = self.main_engine.get_contract(stop_order.vt_symbol)
-
-                vt_orderids = self.send_limit_order(
-                    strategy, 
-                    contract,
-                    stop_order.direction, 
-                    stop_order.offset, 
-                    price, 
-                    stop_order.volume,
-                    stop_order.lock
-                )
-
-                # Update stop order status if placed successfully
-                if vt_orderids:
-                    # Remove from relation map.
-                    self.stop_orders.pop(stop_order.stop_orderid)
-
-                    strategy_vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-                    if stop_order.stop_orderid in strategy_vt_orderids:
-                        strategy_vt_orderids.remove(stop_order.stop_orderid)
-
-                    # Change stop order status to cancelled and update to strategy.
-                    stop_order.status = StopOrderStatus.TRIGGERED
-                    stop_order.vt_orderids = vt_orderids
-
-                    self.call_strategy_func(
-                        strategy, strategy.on_stop_order, stop_order
-                    )
-                    self.put_stop_order_event(stop_order)
+    # def check_stop_order(self, tick: TickData):
+    #     """"""
+    #     for stop_order in list(self.stop_orders.values()):
+    #         if stop_order.vt_symbol != tick.vt_symbol:
+    #             continue
+    #
+    #         long_triggered = (
+    #             stop_order.direction == Direction.LONG and tick.last_price >= stop_order.price
+    #         )
+    #         short_triggered = (
+    #             stop_order.direction == Direction.SHORT and tick.last_price <= stop_order.price
+    #         )
+    #
+    #         if long_triggered or short_triggered:
+    #             strategy = self.strategies[stop_order.strategy_name]
+    #
+    #             # To get excuted immediately after stop order is
+    #             # triggered, use limit price if available, otherwise
+    #             # use ask_price_5 or bid_price_5
+    #             if stop_order.direction == Direction.LONG:
+    #                 if tick.limit_up:
+    #                     price = tick.limit_up
+    #                 elif tick.ask_price_5:
+    #                     price = tick.ask_price_5
+    #                 else:
+    #                     price = int(tick.ask_price_1 * 1.01)
+    #             else:
+    #                 if tick.limit_down:
+    #                     price = tick.limit_down
+    #                 elif tick.bid_price_5:
+    #                     price = tick.bid_price_5
+    #                 else:
+    #                     price = int(tick.bid_price_1 * 0.99)
+    #
+    #             contract = self.main_engine.get_contract(stop_order.vt_symbol)
+    #
+    #             vt_orderids = self.send_limit_order(
+    #                 strategy,
+    #                 contract,
+    #                 stop_order.direction,
+    #                 stop_order.offset,
+    #                 price,
+    #                 stop_order.volume,
+    #                 stop_order.lock
+    #             )
+    #
+    #             # Update stop order status if placed successfully
+    #             if vt_orderids:
+    #                 # Remove from relation map.
+    #                 self.stop_orders.pop(stop_order.stop_orderid)
+    #
+    #                 strategy_vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
+    #                 if stop_order.stop_orderid in strategy_vt_orderids:
+    #                     strategy_vt_orderids.remove(stop_order.stop_orderid)
+    #
+    #                 # Change stop order status to cancelled and update to strategy.
+    #                 stop_order.status = StopOrderStatus.TRIGGERED
+    #                 stop_order.vt_orderids = vt_orderids
+    #
+    #                 self.call_strategy_func(
+    #                     strategy, strategy.on_stop_order, stop_order
+    #                 )
+    #                 self.put_stop_order_event(stop_order)
 
     def send_server_order(
         self,
@@ -312,7 +311,6 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         type: OrderType,
-        lock: bool
     ):
         """
         Send a new order to server.
@@ -329,8 +327,8 @@ class CtaEngine(BaseEngine):
         )
 
         # Convert with offset converter
-        req_list = self.offset_converter.convert_order_request(original_req, lock)
-
+        # req_list = self.offset_converter.convert_order_request(original_req, lock)
+        req_list = [original_req]
         # Send Orders
         vt_orderids = []
 
@@ -360,7 +358,6 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
     ):
         """
         Send a limit order to server.
@@ -373,7 +370,6 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.LIMIT,
-            lock
         )
     
     def send_server_stop_order(
@@ -384,7 +380,6 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
     ):
         """
         Send a stop order to server.
@@ -400,44 +395,43 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.STOP,
-            lock
         )
 
-    def send_local_stop_order(
-        self,
-        strategy: CtaTemplate,
-        direction: Direction,
-        offset: Offset,
-        price: float,
-        volume: float,
-        lock: bool
-    ):
-        """
-        Create a new local stop order.
-        """
-        self.stop_order_count += 1
-        stop_orderid = f"{STOPORDER_PREFIX}.{self.stop_order_count}"
-
-        stop_order = StopOrder(
-            vt_symbol=strategy.vt_symbol,
-            direction=direction,
-            offset=offset,
-            price=price,
-            volume=volume,
-            stop_orderid=stop_orderid,
-            strategy_name=strategy.strategy_name,
-            lock=lock
-        )
-
-        self.stop_orders[stop_orderid] = stop_order
-
-        vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-        vt_orderids.add(stop_orderid)
-
-        self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
-        self.put_stop_order_event(stop_order)
-
-        return [stop_orderid]
+    # def send_local_stop_order(
+    #     self,
+    #     strategy: CtaTemplate,
+    #     direction: Direction,
+    #     offset: Offset,
+    #     price: float,
+    #     volume: float,
+    #     lock: bool
+    # ):
+    #     """
+    #     Create a new local stop order.
+    #     """
+    #     self.stop_order_count += 1
+    #     stop_orderid = f"{STOPORDER_PREFIX}.{self.stop_order_count}"
+    #
+    #     stop_order = StopOrder(
+    #         vt_symbol=strategy.vt_symbol,
+    #         direction=direction,
+    #         offset=offset,
+    #         price=price,
+    #         volume=volume,
+    #         stop_orderid=stop_orderid,
+    #         strategy_name=strategy.strategy_name,
+    #         lock=lock
+    #     )
+    #
+    #     self.stop_orders[stop_orderid] = stop_order
+    #
+    #     vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
+    #     vt_orderids.add(stop_orderid)
+    #
+    #     self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
+    #     self.put_stop_order_event(stop_order)
+    #
+    #     return [stop_orderid]
 
     def cancel_server_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
@@ -451,27 +445,27 @@ class CtaEngine(BaseEngine):
         req = order.create_cancel_request()
         self.main_engine.cancel_order(req, order.gateway_name)
 
-    def cancel_local_stop_order(self, strategy: CtaTemplate, stop_orderid: str):
-        """
-        Cancel a local stop order.
-        """
-        stop_order = self.stop_orders.get(stop_orderid, None)
-        if not stop_order:
-            return
-        strategy = self.strategies[stop_order.strategy_name]
-
-        # Remove from relation map.
-        self.stop_orders.pop(stop_orderid)
-
-        vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-        if stop_orderid in vt_orderids:
-            vt_orderids.remove(stop_orderid)
-
-        # Change stop order status to cancelled and update to strategy.
-        stop_order.status = StopOrderStatus.CANCELLED
-
-        self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
-        self.put_stop_order_event(stop_order)
+    # def cancel_local_stop_order(self, strategy: CtaTemplate, stop_orderid: str):
+    #     """
+    #     Cancel a local stop order.
+    #     """
+    #     stop_order = self.stop_orders.get(stop_orderid, None)
+    #     if not stop_order:
+    #         return
+    #     strategy = self.strategies[stop_order.strategy_name]
+    #
+    #     # Remove from relation map.
+    #     self.stop_orders.pop(stop_orderid)
+    #
+    #     vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
+    #     if stop_orderid in vt_orderids:
+    #         vt_orderids.remove(stop_orderid)
+    #
+    #     # Change stop order status to cancelled and update to strategy.
+    #     stop_order.status = StopOrderStatus.CANCELLED
+    #
+    #     self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
+    #     self.put_stop_order_event(stop_order)
 
     def send_order(
         self,
@@ -480,8 +474,7 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        stop: bool,
-        lock: bool
+        stop: bool
     ):
         """
         """
@@ -495,12 +488,9 @@ class CtaEngine(BaseEngine):
         volume = round_to(volume, contract.min_volume)
 
         if stop:
-            if contract.stop_supported:
-                return self.send_server_stop_order(strategy, contract, direction, offset, price, volume, lock)
-            else:
-                return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
+            return self.send_server_stop_order(strategy, contract, direction, offset, price, volume)
         else:
-            return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
+            return self.send_limit_order(strategy, contract, direction, offset, price, volume)
 
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
