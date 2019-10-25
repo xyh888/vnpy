@@ -550,6 +550,7 @@ class IbApi(EWrapper):
             price=execution.price,
             volume=execution.shares,
             time=datetime.strptime(execution.time, "%Y%m%d  %H:%M:%S"),
+            orderRef=execution.orderRef,
             gateway_name=self.gateway_name,
         )
 
@@ -742,6 +743,7 @@ class IbApi(EWrapper):
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
         ib_order.totalQuantity = req.volume
         ib_order.outsideRth = True
+        ib_order.orderRef = req.orderRef
         ib_order.account = self.major_account
 
         if req.type == OrderType.LIMIT:

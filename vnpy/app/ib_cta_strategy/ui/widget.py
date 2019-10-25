@@ -53,6 +53,9 @@ class CtaManager(QtWidgets.QWidget):
         start_button = QtWidgets.QPushButton("全部启动")
         start_button.clicked.connect(self.cta_engine.start_all_strategies)
 
+        recover_button = QtWidgets.QPushButton("全部恢复")
+        recover_button.clicked.connect(self.cta_engine.recover_all_strategies)
+
         stop_button = QtWidgets.QPushButton("全部停止")
         stop_button.clicked.connect(self.cta_engine.stop_all_strategies)
 
@@ -82,6 +85,7 @@ class CtaManager(QtWidgets.QWidget):
         hbox1.addStretch()
         hbox1.addWidget(init_button)
         hbox1.addWidget(start_button)
+        hbox1.addWidget(recover_button)
         hbox1.addWidget(stop_button)
         hbox1.addWidget(clear_button)
 
@@ -189,6 +193,9 @@ class StrategyManager(QtWidgets.QFrame):
         start_button = QtWidgets.QPushButton("启动")
         start_button.clicked.connect(self.start_strategy)
 
+        recover_button = QtWidgets.QPushButton("恢复")
+        recover_button.clicked.connect(self.recover_strategy)
+
         stop_button = QtWidgets.QPushButton("停止")
         stop_button.clicked.connect(self.stop_strategy)
 
@@ -215,6 +222,7 @@ class StrategyManager(QtWidgets.QFrame):
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(init_button)
         hbox.addWidget(start_button)
+        hbox.addWidget(recover_button)
         hbox.addWidget(stop_button)
         hbox.addWidget(edit_button)
         hbox.addWidget(remove_button)
@@ -240,6 +248,10 @@ class StrategyManager(QtWidgets.QFrame):
     def start_strategy(self):
         """"""
         self.cta_engine.start_strategy(self.strategy_name)
+
+    def recover_strategy(self):
+        """"""
+        self.cta_engine.recover_strategy(self.strategy_name)
 
     def stop_strategy(self):
         """"""

@@ -107,6 +107,13 @@ class CtaTemplate(ABC):
         pass
 
     @virtual
+    def on_recover(self):
+        """
+        Callback when strategy is recovered.
+        """
+        pass
+
+    @virtual
     def on_stop(self):
         """
         Callback when strategy is stopped.
