@@ -554,19 +554,20 @@ class CtaEngine(BaseEngine):
             return
 
         if strategy.trading:
-            self.write_log(f"{strategy_name}已经启动，请勿重复操作")
+            self.write_log(f"{strategy_name}已经启动，请勿做恢复操作")
             return
 
         # Restore strategy data(variables)
         data = self.strategy_data.get(strategy_name, None)
+        variables = {}
         if data:
             for name in strategy.variables:
-                value = data.get(name, None)
-                if value:
-                    setattr(strategy, name, value)
+                variables[name] = data.get(name, None)
+
+        self.recover_orders_and_trades()
 
         self.write_log("策略恢复", strategy)
-        self.call_strategy_func(strategy, strategy.on_recover)
+        self.call_strategy_func(strategy, strategy.on_recover, variables)
 
         self.put_strategy_event(strategy)
 
@@ -643,6 +644,23 @@ class CtaEngine(BaseEngine):
 
         path2 = Path.cwd().joinpath("strategies")
         self.load_strategy_class_from_folder(path2, "strategies")
+
+    def recover_orders_and_trades(self):
+        """
+        recover strategy orders from open orders.
+        """
+        orders = self.main_engine.get_all_orders()
+
+        for o in orders:
+            if o.orderRef in self.strategies:
+                self.orderid_strategy_map[o.vt_orderid] = self.strategies[o.orderRef]
+                self.strategy_orderid_map[o.orderRef] = o.vt_orderid
+
+        trades = self.main_engine.get_all_trades()
+
+        for t in trades:
+            if t.orderRef in self.strategies:
+                database_manager.save_trade_data([t], t.orderRef)
 
     def load_strategy_class_from_folder(self, path: Path, module_name: str = ""):
         """

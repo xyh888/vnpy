@@ -107,7 +107,7 @@ class CtaTemplate(ABC):
         pass
 
     @virtual
-    def on_recover(self):
+    def on_recover(self, variables: dict = None):
         """
         Callback when strategy is recovered.
         """
