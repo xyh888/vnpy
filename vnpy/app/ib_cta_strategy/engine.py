@@ -654,7 +654,7 @@ class CtaEngine(BaseEngine):
         for o in orders:
             if o.orderRef in self.strategies:
                 self.orderid_strategy_map[o.vt_orderid] = self.strategies[o.orderRef]
-                self.strategy_orderid_map[o.orderRef] = o.vt_orderid
+                self.strategy_orderid_map[o.orderRef].add(o.vt_orderid)
 
         trades = self.main_engine.get_all_trades()
 
