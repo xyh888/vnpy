@@ -299,6 +299,7 @@ class OrderRequest:
             offset=self.offset,
             price=self.price,
             volume=self.volume,
+            orderRef=self.orderRef,
             gateway_name=gateway_name,
         )
         return order
