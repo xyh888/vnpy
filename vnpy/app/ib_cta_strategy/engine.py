@@ -562,6 +562,8 @@ class CtaEngine(BaseEngine):
         variables = {}
         if data:
             for name in strategy.variables:
+                if name in ['inited', 'trading']:
+                    continue
                 variables[name] = data.get(name, None)
 
         self.recover_orders_and_trades()
