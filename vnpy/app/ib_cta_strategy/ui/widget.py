@@ -56,6 +56,9 @@ class CtaManager(QtWidgets.QWidget):
         recover_button = QtWidgets.QPushButton("全部恢复")
         recover_button.clicked.connect(self.cta_engine.recover_all_strategies)
 
+        cover_pos_button = QtWidgets.QPushButton("全部平仓")
+        cover_pos_button.clicked.connect(self.cta_engine.close_all_strategies_pos)
+
         stop_button = QtWidgets.QPushButton("全部停止")
         stop_button.clicked.connect(self.cta_engine.stop_all_strategies)
 
@@ -86,6 +89,7 @@ class CtaManager(QtWidgets.QWidget):
         hbox1.addWidget(init_button)
         hbox1.addWidget(start_button)
         hbox1.addWidget(recover_button)
+        hbox1.addWidget(cover_pos_button)
         hbox1.addWidget(stop_button)
         hbox1.addWidget(clear_button)
 
@@ -196,6 +200,9 @@ class StrategyManager(QtWidgets.QFrame):
         recover_button = QtWidgets.QPushButton("恢复")
         recover_button.clicked.connect(self.recover_strategy)
 
+        cover_pos_button = QtWidgets.QPushButton("平仓")
+        cover_pos_button.clicked.connect(self.cta_engine.close_strategy_pos)
+
         stop_button = QtWidgets.QPushButton("停止")
         stop_button.clicked.connect(self.stop_strategy)
 
@@ -223,6 +230,7 @@ class StrategyManager(QtWidgets.QFrame):
         hbox.addWidget(init_button)
         hbox.addWidget(start_button)
         hbox.addWidget(recover_button)
+        hbox.addWidget(cover_pos_button)
         hbox.addWidget(stop_button)
         hbox.addWidget(edit_button)
         hbox.addWidget(remove_button)

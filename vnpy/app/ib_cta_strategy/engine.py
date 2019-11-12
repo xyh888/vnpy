@@ -596,6 +596,30 @@ class CtaEngine(BaseEngine):
         # Update GUI
         self.put_strategy_event(strategy)
 
+    def close_strategy_pos(self, strategy_name: str):
+        strategy = self.strategies[strategy_name]
+        if not strategy.trading:
+            return
+
+        # Cancel all orders of the strategy
+        self.cancel_all(strategy)
+
+        if strategy.pos != 0:
+            tick = self.main_engine.get_tick(strategy.vt_symbol)
+            if not tick:
+                self.write_log(f"不存在Tick，请先订阅", strategy)
+                return
+
+            if strategy.pos > 0:
+                self.strategy.send_order(Direction.SHORT, Offset.CLOSE, tick.last_price - 10, strategy.pos)
+            else:
+                self.strategy.send_order(Direction.LONG, Offset.CLOSE, tick.last_price + 10, -strategy.pos)
+
+        self.sync_strategy_data(strategy)
+
+        # Update GUI
+        self.put_strategy_event(strategy)
+
     def edit_strategy(self, strategy_name: str, setting: dict):
         """
         Edit parameters of a strategy.
@@ -755,6 +779,12 @@ class CtaEngine(BaseEngine):
         """
         for strategy_name in self.strategies.keys():
             self.stop_strategy(strategy_name)
+
+    def close_all_strategies_pos(self):
+        """
+        """
+        for strategy_name in self.strategies.keys():
+            self.close_strategy_pos(strategy_name)
 
     def load_strategy_setting(self):
         """
