@@ -5,7 +5,7 @@ from copy import copy
 from datetime import datetime
 from dateutil import parser
 from queue import Empty
-from threading import Thread, Condition
+from threading import Thread, Condition, Lock
 
 from ibapi import comm
 from ibapi.client import EClient
@@ -230,6 +230,7 @@ class IbApi(EWrapper):
 
         self.client = IbClient(self)
         self.thread = Thread(target=self.client.run)
+        self.orderLock = Lock()
 
     def connectAck(self):  # pylint: disable=invalid-name
         """
@@ -730,14 +731,11 @@ class IbApi(EWrapper):
             self.gateway.write_log(f"不支持的价格类型：{req.type}")
             return ""
 
-        self.orderid += 1
-
         ib_contract = Contract()
         ib_contract.conId = str(req.symbol)
         ib_contract.exchange = EXCHANGE_VT2IB[req.exchange]
 
         ib_order = Order()
-        ib_order.orderId = self.orderid
         ib_order.clientId = self.clientid
         ib_order.action = DIRECTION_VT2IB[req.direction]
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
@@ -751,10 +749,14 @@ class IbApi(EWrapper):
         elif req.type == OrderType.STOP:
             ib_order.auxPrice = req.price
 
+        self.orderLock.acquire()
+        self.orderid += 1
+        ib_order.orderId = self.orderid
         self.client.placeOrder(self.orderid, ib_contract, ib_order)
-        self.client.reqIds(1)
-
+        # self.client.reqIds(1)
         order = req.create_order_data(str(self.orderid), self.gateway_name)
+        self.orderLock.release()
+
         self.gateway.on_order(order)
         return order.vt_orderid
 
