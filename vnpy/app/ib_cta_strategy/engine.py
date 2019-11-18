@@ -724,11 +724,6 @@ class CtaEngine(BaseEngine):
         """
         Sync strategy data into json file.
         """
-        # sync_data is not allowed before init
-        if not strategy.inited:
-            self.write_log(f"{strategy.strategy_name}未初始化，禁止同步数据")
-            return
-
         data = strategy.get_variables()
         data.pop("inited")      # Strategy status (inited, trading) should not be synced.
         data.pop("trading")
