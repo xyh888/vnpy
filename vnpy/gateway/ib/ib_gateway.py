@@ -18,6 +18,7 @@ from ibapi.ticktype import TickType
 from ibapi.wrapper import EWrapper
 from ibapi.errors import BAD_LENGTH
 from ibapi.common import BarData as IbBarData
+from dataclasses import dataclass
 
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import (
@@ -125,6 +126,14 @@ INTERVAL_VT2IB = {
     Interval.DAILY: "1 day",
     Interval.WEEKLY: "1 week"
 }
+
+EVENT_ERROR = "eError"
+
+@dataclass
+class IBError:
+    reqId = -1
+    code = None
+    content = ""
 
 
 class IbGateway(BaseGateway):
@@ -276,6 +285,8 @@ class IbApi(EWrapper):
 
         msg = f"信息通知，代码：{errorCode}，内容: {errorString}, ReqID={reqId}"
         self.gateway.write_log(msg)
+        e = IBError(reqId=reqId, code=errorCode, content=errorString)
+        self.gateway.on_event(EVENT_ERROR, e)
 
     def tickPrice(  # pylint: disable=invalid-name
         self, reqId: TickerId, tickType: TickType, price: float, attrib: TickAttrib
