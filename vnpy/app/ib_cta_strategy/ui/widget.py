@@ -201,7 +201,7 @@ class StrategyManager(QtWidgets.QFrame):
         recover_button.clicked.connect(self.recover_strategy)
 
         cover_pos_button = QtWidgets.QPushButton("平仓")
-        cover_pos_button.clicked.connect(self.cta_engine.close_strategy_pos)
+        cover_pos_button.clicked.connect(self.close_strategy_pos)
 
         stop_button = QtWidgets.QPushButton("停止")
         stop_button.clicked.connect(self.stop_strategy)
@@ -264,6 +264,10 @@ class StrategyManager(QtWidgets.QFrame):
     def stop_strategy(self):
         """"""
         self.cta_engine.stop_strategy(self.strategy_name)
+
+    def close_strategy_pos(self):
+        """"""
+        self.cta_engine.close_strategy_pos(self.strategy_name)
 
     def edit_strategy(self):
         """"""

@@ -110,6 +110,7 @@ TICKFIELD_IB2VT = {
     8: "volume",
     9: "pre_close",
     14: "open_price",
+    22: "open_interest"
 }
 
 ACCOUNTFIELD_IB2VT = {
