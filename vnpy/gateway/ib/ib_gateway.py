@@ -32,7 +32,8 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-    HistoryRequest
+    HistoryRequest,
+    BaseData
 )
 from vnpy.trader.constant import (
     Product,
@@ -131,7 +132,7 @@ INTERVAL_VT2IB = {
 EVENT_ERROR = "eError"
 
 @dataclass
-class IBError:
+class IBError(BaseData):
     reqId = -1
     code = None
     content = ""
