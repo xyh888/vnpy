@@ -133,9 +133,9 @@ EVENT_ERROR = "eError"
 
 @dataclass
 class IBError(BaseData):
-    reqId = -1
-    code = None
-    content = ""
+    reqId: int = -1
+    code: int = None
+    content: str = ""
 
 
 class IbGateway(BaseGateway):
