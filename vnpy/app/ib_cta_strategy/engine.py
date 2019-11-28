@@ -611,9 +611,9 @@ class CtaEngine(BaseEngine):
                 return
 
             if strategy.pos > 0:
-                self.strategy.send_order(Direction.SHORT, Offset.CLOSE, tick.last_price - 10, strategy.pos)
+                strategy.send_order(Direction.SHORT, Offset.CLOSE, tick.last_price - 10, strategy.pos)
             else:
-                self.strategy.send_order(Direction.LONG, Offset.CLOSE, tick.last_price + 10, -strategy.pos)
+                strategy.send_order(Direction.LONG, Offset.CLOSE, tick.last_price + 10, -strategy.pos)
 
         self.sync_strategy_data(strategy)
 
