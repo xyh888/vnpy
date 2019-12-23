@@ -209,6 +209,9 @@ class StrategyManager(QtWidgets.QFrame):
         edit_button = QtWidgets.QPushButton("编辑")
         edit_button.clicked.connect(self.edit_strategy)
 
+        modify_button = QtWidgets.QPushButton("修改")
+        modify_button.clicked.connect(self.modify_strategy)
+
         remove_button = QtWidgets.QPushButton("移除")
         remove_button.clicked.connect(self.remove_strategy)
 
@@ -280,6 +283,15 @@ class StrategyManager(QtWidgets.QFrame):
         if n == editor.Accepted:
             setting = editor.get_setting()
             self.cta_engine.edit_strategy(strategy_name, setting)
+
+    def modify_strategy(self):
+        strategy_name = self._data["strategy_name"]
+        modifier = ModifyEditor(strategy_name=strategy_name)
+        n = modifier.exec_()
+
+        if n == modifier.Accepted:
+            key, value = modifier.get_data()
+            self.cta_engine.modify_strategy_data(strategy_name, key, value)
 
     def remove_strategy(self):
         """"""
@@ -469,3 +481,41 @@ class SettingEditor(QtWidgets.QDialog):
             setting[name] = value
 
         return setting
+
+class ModifyEditor(QtWidgets.QDialog):
+    """
+     For creating new strategy and editing strategy parameters.
+     """
+
+    def __init__(
+            self, strategy_name: str = ""
+    ):
+        """"""
+        super(ModifyEditor, self).__init__()
+
+        self.strategy_name = strategy_name
+
+        self.edits = {}
+
+        self.init_ui()
+
+    def init_ui(self):
+        """"""
+        form = QtWidgets.QFormLayout()
+
+        self.setWindowTitle(f"数据修改：{self.strategy_name}")
+        button_text = "修改"
+
+        self.key_edit = QtWidgets.QLineEdit()
+        self.value_edit = QtWidgets.QLineEdit()
+
+        form.addRow(self.key_edit, ":", self.value_edit)
+
+        button = QtWidgets.QPushButton(button_text)
+        button.clicked.connect(self.accept)
+        form.addRow(button)
+        self.setLayout(form)
+
+    def get_data(self):
+        """"""
+        return self.key_edit.text(), self.value_edit.text()

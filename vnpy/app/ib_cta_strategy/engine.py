@@ -7,7 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Thread, Lock
 from queue import Queue
 from copy import copy
 
@@ -103,6 +103,8 @@ class CtaEngine(BaseEngine):
         self.offset_converter = OffsetConverter(self.main_engine)
 
         self.notifier = None
+
+        self._lock = Lock()
 
     def init_engine(self):
         """
@@ -628,6 +630,27 @@ class CtaEngine(BaseEngine):
         strategy.update_setting(setting)
 
         self.update_strategy_setting(strategy_name, setting)
+        self.put_strategy_event(strategy)
+
+    def modify_strategy_data(self, strategy_name: str, key: str, value):
+        """
+
+        Change parameters or variable of a straegy.
+        """
+        strategy = self.strategies[strategy_name]
+
+        if not hasattr(strategy, key):
+            self.write_log(f"策略{strategy.strategy_name}不存在字段：{key}")
+            return
+
+        _type = type(getattr(strategy, key))
+
+        with self._lock:
+            try:
+                setattr(strategy, key, _type(value))
+            except Exception as e:
+                self.write_log(f"策略{strategy.strategy_name}设置{key}错误--{e}")
+
         self.put_strategy_event(strategy)
 
     def remove_strategy(self, strategy_name: str):
