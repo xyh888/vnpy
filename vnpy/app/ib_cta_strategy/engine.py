@@ -11,7 +11,7 @@ from threading import Thread, Lock
 from queue import Queue
 from copy import copy
 
-from vnpy.event import Event, EventEngine
+from vnpy.event import Event, EventEngine, EVENT_TIMER
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.object import (
     OrderRequest,
@@ -46,6 +46,7 @@ from .base import (
     EVENT_CTA_NOTIFY,
     EVENT_CTA_STRATEGY,
     EVENT_CTA_STOPORDER,
+    EVENT_DAILY_CLOSE,
     EngineType,
     StopOrder,
     StopOrderStatus,
@@ -74,6 +75,7 @@ class CtaEngine(BaseEngine):
 
     setting_filename = "ib_cta_strategy_setting.json"
     data_filename = "ib_cta_strategy_data.json"
+    daily_close_filename = "dail_close_setting.json"
 
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """"""
@@ -106,6 +108,9 @@ class CtaEngine(BaseEngine):
 
         self._lock = Lock()
 
+        self.daily_close_setting = {}
+        self._timer_count = 0
+
     def init_engine(self):
         """
         """
@@ -127,6 +132,8 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
         self.event_engine.register(EVENT_CTA_NOTIFY, self.process_notify_event)
+        self.event_engine.register(EVENT_DAILY_CLOSE, self.process_daily_close_event)
+        self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def init_notifier(self):
         from vnpy.trader.setting import get_settings
@@ -238,6 +245,24 @@ class CtaEngine(BaseEngine):
                 self.write_log(f'KRPushException: {e}')
         else:
             self.write_log(f'KRPush未配置,无法推送->{notification}')
+
+    def process_daily_close_event(self, event: Event):
+        print(f'日内平仓测试{event}')
+        # self.close_all_strategies_pos()
+
+    def process_timer_event(self, event: Event):
+        self._timer_count += 1
+
+        if self._timer_count%3 == 0 and \
+                self.daily_close_setting and \
+                timedelta(seconds=-35) < datetime.now() - self.daily_close_setting['time'] < timedelta(seconds=-30):
+            self.event_engine.put(Event(EVENT_DAILY_CLOSE))
+
+        if self._timer_count < 600:
+            return
+
+        self._timer_count = 0
+        self.load_daily_close_setting()
 
     def send_server_order(
         self,
@@ -822,6 +847,17 @@ class CtaEngine(BaseEngine):
                 strategy_config["vt_symbol"], 
                 strategy_config["setting"]
             )
+
+    def load_daily_close_setting(self):
+        setting = load_json(self.daily_close_filename)
+
+        if 'time' in setting:
+            try:
+                self.daily_close_setting = datetime.now().replace(hour=setting['time'][0], minute=setting['time'][1], second=0)
+            except Exception as e:
+                self.write_log(f"配置日内平仓错误：{e}")
+        else:
+            self.daily_close_setting = {}
 
     def update_strategy_setting(self, strategy_name: str, setting: dict):
         """
