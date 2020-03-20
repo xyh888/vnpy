@@ -118,6 +118,7 @@ class OrderData(BaseData):
     traded: float = 0
     status: Status = Status.SUBMITTING
     time: str = ""
+    orderRef: str = ""
 
     def __post_init__(self):
         """"""
@@ -160,6 +161,7 @@ class TradeData(BaseData):
     price: float = 0
     volume: float = 0
     time: str = ""
+    orderRef: str = ""
 
     def __post_init__(self):
         """"""
@@ -278,6 +280,7 @@ class OrderRequest:
     volume: float
     price: float = 0
     offset: Offset = Offset.NONE
+    orderRef: str = ""
 
     def __post_init__(self):
         """"""
@@ -296,6 +299,7 @@ class OrderRequest:
             offset=self.offset,
             price=self.price,
             volume=self.volume,
+            orderRef=self.orderRef,
             gateway_name=gateway_name,
         )
         return order

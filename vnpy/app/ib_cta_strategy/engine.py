@@ -7,11 +7,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Thread, Lock
 from queue import Queue
 from copy import copy
 
-from vnpy.event import Event, EventEngine
+from vnpy.event import Event, EventEngine, EVENT_TIMER
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.object import (
     OrderRequest,
@@ -46,6 +46,7 @@ from .base import (
     EVENT_CTA_NOTIFY,
     EVENT_CTA_STRATEGY,
     EVENT_CTA_STOPORDER,
+    EVENT_DAILY_CLOSE,
     EngineType,
     StopOrder,
     StopOrderStatus,
@@ -74,6 +75,7 @@ class CtaEngine(BaseEngine):
 
     setting_filename = "ib_cta_strategy_setting.json"
     data_filename = "ib_cta_strategy_data.json"
+    daily_close_filename = "dail_close_setting.json"
 
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """"""
@@ -92,14 +94,11 @@ class CtaEngine(BaseEngine):
         self.strategy_orderid_map = defaultdict(
             set)                    # strategy_name: orderid list
 
-        self.stop_order_count = 0   # for generating stop_orderid
-        self.stop_orders = {}       # stop_orderid: stop_order
+        # self.stop_order_count = 0   # for generating stop_orderid
+        # self.stop_orders = {}       # stop_orderid: stop_order
 
         self.init_thread = None
         self.init_queue = Queue()
-
-        self.rq_client = None
-        self.rq_symbols = set()
 
         self.vt_tradeids = set()    # for filtering duplicate trade
 
@@ -107,10 +106,14 @@ class CtaEngine(BaseEngine):
 
         self.notifier = None
 
+        self._lock = Lock()
+
+        self.daily_close_setting = {}
+        self._timer_count = 0
+
     def init_engine(self):
         """
         """
-        self.init_rqdata()
         self.init_notifier()
         self.load_strategy_class()
         self.load_strategy_setting()
@@ -129,6 +132,8 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
         self.event_engine.register(EVENT_CTA_NOTIFY, self.process_notify_event)
+        self.event_engine.register(EVENT_DAILY_CLOSE, self.process_daily_close_event)
+        self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def init_notifier(self):
         from vnpy.trader.setting import get_settings
@@ -139,30 +144,6 @@ class CtaEngine(BaseEngine):
             self.notifier.audience = jpush.all_
             self.notifier.platform = jpush.all_
 
-    def init_rqdata(self):
-        """
-        Init RQData client.
-        """
-        result = rqdata_client.init()
-        if result:
-            self.write_log("RQData数据接口初始化成功")
-
-    def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
-    ):
-        """
-        Query bar data from RQData.
-        """
-        req = HistoryRequest(
-            symbol=symbol,
-            exchange=exchange,
-            interval=interval,
-            start=start,
-            end=end
-        )
-        data = rqdata_client.query_history(req)
-        return data
-
     def process_tick_event(self, event: Event):
         """"""
         tick = event.data
@@ -171,7 +152,7 @@ class CtaEngine(BaseEngine):
         if not strategies:
             return
 
-        self.check_stop_order(tick)
+        # self.check_stop_order(tick)
 
         for strategy in strategies:
             if strategy.inited:
@@ -180,7 +161,6 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-        
         self.offset_converter.update_order(order)
 
         strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
@@ -202,13 +182,14 @@ class CtaEngine(BaseEngine):
                 volume=order.volume,
                 stop_orderid=order.vt_orderid,
                 strategy_name=strategy.strategy_name,
-                status=STOP_STATUS_MAP[order.status],
+                status=STOP_STATUS_MAP.get(order.status, ""),
                 vt_orderids=[order.vt_orderid],
             )
             self.call_strategy_func(strategy, strategy.on_stop_order, so)  
 
         # Call strategy on_order function
         self.call_strategy_func(strategy, strategy.on_order, order)
+        self.write_log(f'ORDER[{order.type.value}]<{order.vt_orderid}>:#{order.vt_symbol} {order.direction.value} {order.volume}@{order.price} -- {order.status}', strategy)
 
     def process_trade_event(self, event: Event):
         """"""
@@ -240,7 +221,7 @@ class CtaEngine(BaseEngine):
 
         # Update GUI
         self.put_strategy_event(strategy)
-
+        self.write_log(f'TRADE<{trade.vt_tradeid}>:#{trade.vt_symbol} {trade.direction.value} {trade.volume}@{trade.price}', strategy)
 
     def process_position_event(self, event: Event):
         """"""
@@ -265,70 +246,23 @@ class CtaEngine(BaseEngine):
         else:
             self.write_log(f'KRPush未配置,无法推送->{notification}')
 
+    def process_daily_close_event(self, event: Event):
+        print(f'日内平仓测试{event}')
+        # self.close_all_strategies_pos()
 
-    def check_stop_order(self, tick: TickData):
-        """"""
-        for stop_order in list(self.stop_orders.values()):
-            if stop_order.vt_symbol != tick.vt_symbol:
-                continue
+    def process_timer_event(self, event: Event):
+        self._timer_count += 1
 
-            long_triggered = (
-                stop_order.direction == Direction.LONG and tick.last_price >= stop_order.price
-            )
-            short_triggered = (
-                stop_order.direction == Direction.SHORT and tick.last_price <= stop_order.price
-            )
+        if self._timer_count%3 == 0 and \
+                self.daily_close_setting and \
+                timedelta(seconds=-35) < datetime.now() - self.daily_close_setting['time'] < timedelta(seconds=-30):
+            self.event_engine.put(Event(EVENT_DAILY_CLOSE))
 
-            if long_triggered or short_triggered:
-                strategy = self.strategies[stop_order.strategy_name]
+        if self._timer_count < 600:
+            return
 
-                # To get excuted immediately after stop order is
-                # triggered, use limit price if available, otherwise
-                # use ask_price_5 or bid_price_5
-                if stop_order.direction == Direction.LONG:
-                    if tick.limit_up:
-                        price = tick.limit_up
-                    elif tick.ask_price_5:
-                        price = tick.ask_price_5
-                    else:
-                        price = int(tick.ask_price_1 * 1.01)
-                else:
-                    if tick.limit_down:
-                        price = tick.limit_down
-                    elif tick.bid_price_5:
-                        price = tick.bid_price_5
-                    else:
-                        price = int(tick.bid_price_1 * 0.99)
-                
-                contract = self.main_engine.get_contract(stop_order.vt_symbol)
-
-                vt_orderids = self.send_limit_order(
-                    strategy, 
-                    contract,
-                    stop_order.direction, 
-                    stop_order.offset, 
-                    price, 
-                    stop_order.volume,
-                    stop_order.lock
-                )
-
-                # Update stop order status if placed successfully
-                if vt_orderids:
-                    # Remove from relation map.
-                    self.stop_orders.pop(stop_order.stop_orderid)
-
-                    strategy_vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-                    if stop_order.stop_orderid in strategy_vt_orderids:
-                        strategy_vt_orderids.remove(stop_order.stop_orderid)
-
-                    # Change stop order status to cancelled and update to strategy.
-                    stop_order.status = StopOrderStatus.TRIGGERED
-                    stop_order.vt_orderids = vt_orderids
-
-                    self.call_strategy_func(
-                        strategy, strategy.on_stop_order, stop_order
-                    )
-                    self.put_stop_order_event(stop_order)
+        self._timer_count = 0
+        self.load_daily_close_setting()
 
     def send_server_order(
         self,
@@ -339,7 +273,6 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         type: OrderType,
-        lock: bool
     ):
         """
         Send a new order to server.
@@ -353,11 +286,12 @@ class CtaEngine(BaseEngine):
             type=type,
             price=price,
             volume=volume,
+            orderRef=strategy.strategy_name
         )
 
         # Convert with offset converter
-        req_list = self.offset_converter.convert_order_request(original_req, lock)
-
+        # req_list = self.offset_converter.convert_order_request(original_req, lock)
+        req_list = [original_req]
         # Send Orders
         vt_orderids = []
 
@@ -387,7 +321,6 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
     ):
         """
         Send a limit order to server.
@@ -400,7 +333,6 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.LIMIT,
-            lock
         )
     
     def send_server_stop_order(
@@ -411,7 +343,6 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
     ):
         """
         Send a stop order to server.
@@ -427,44 +358,7 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.STOP,
-            lock
         )
-
-    def send_local_stop_order(
-        self,
-        strategy: CtaTemplate,
-        direction: Direction,
-        offset: Offset,
-        price: float,
-        volume: float,
-        lock: bool
-    ):
-        """
-        Create a new local stop order.
-        """
-        self.stop_order_count += 1
-        stop_orderid = f"{STOPORDER_PREFIX}.{self.stop_order_count}"
-
-        stop_order = StopOrder(
-            vt_symbol=strategy.vt_symbol,
-            direction=direction,
-            offset=offset,
-            price=price,
-            volume=volume,
-            stop_orderid=stop_orderid,
-            strategy_name=strategy.strategy_name,
-            lock=lock
-        )
-
-        self.stop_orders[stop_orderid] = stop_order
-
-        vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-        vt_orderids.add(stop_orderid)
-
-        self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
-        self.put_stop_order_event(stop_order)
-
-        return [stop_orderid]
 
     def cancel_server_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
@@ -478,28 +372,6 @@ class CtaEngine(BaseEngine):
         req = order.create_cancel_request()
         self.main_engine.cancel_order(req, order.gateway_name)
 
-    def cancel_local_stop_order(self, strategy: CtaTemplate, stop_orderid: str):
-        """
-        Cancel a local stop order.
-        """
-        stop_order = self.stop_orders.get(stop_orderid, None)
-        if not stop_order:
-            return
-        strategy = self.strategies[stop_order.strategy_name]
-
-        # Remove from relation map.
-        self.stop_orders.pop(stop_orderid)
-
-        vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-        if stop_orderid in vt_orderids:
-            vt_orderids.remove(stop_orderid)
-
-        # Change stop order status to cancelled and update to strategy.
-        stop_order.status = StopOrderStatus.CANCELLED
-
-        self.call_strategy_func(strategy, strategy.on_stop_order, stop_order)
-        self.put_stop_order_event(stop_order)
-
     def send_order(
         self,
         strategy: CtaTemplate,
@@ -507,8 +379,7 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        stop: bool,
-        lock: bool
+        stop: bool
     ):
         """
         """
@@ -522,12 +393,9 @@ class CtaEngine(BaseEngine):
         volume = round_to(volume, contract.min_volume)
 
         if stop:
-            if contract.stop_supported:
-                return self.send_server_stop_order(strategy, contract, direction, offset, price, volume, lock)
-            else:
-                return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
+            return self.send_server_stop_order(strategy, contract, direction, offset, price, volume)
         else:
-            return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
+            return self.send_limit_order(strategy, contract, direction, offset, price, volume)
 
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
@@ -572,17 +440,6 @@ class CtaEngine(BaseEngine):
         req = HistoryRequest(symbol, exchange, start=start, end=None, interval=interval)
 
         bars = self.main_engine.query_history(req, contract.gateway_name)
-
-        # Query bars from IBData by default, if not found, load from database.
-        # bars = self.query_bar_from_ib(symbol, exchange, interval, start, end)
-        # if not bars:
-        #     bars = database_manager.load_bar_data(
-        #         symbol=symbol,
-        #         exchange=exchange,
-        #         interval=interval,
-        #         start=start,
-        #         end=end,
-        #     )
 
         for bar in bars:
             callback(bar)
@@ -680,14 +537,6 @@ class CtaEngine(BaseEngine):
             # Call on_init function of strategy
             self.call_strategy_func(strategy, strategy.on_init)
 
-            # Restore strategy data(variables)
-            data = self.strategy_data.get(strategy_name, None)
-            if data:
-                for name in strategy.variables:
-                    value = data.get(name, None)
-                    if value:
-                        setattr(strategy, name, value)
-
             # Subscribe market data
             contract = self.main_engine.get_contract(strategy.vt_symbol)
             if contract:
@@ -716,9 +565,38 @@ class CtaEngine(BaseEngine):
         if strategy.trading:
             self.write_log(f"{strategy_name}已经启动，请勿重复操作")
             return
-
+        self.write_log("策略启动", strategy)
         self.call_strategy_func(strategy, strategy.on_start)
         strategy.trading = True
+
+        self.put_strategy_event(strategy)
+
+    def recover_strategy(self, strategy_name: str):
+        """
+        Recover a strategy.
+        """
+        strategy = self.strategies[strategy_name]
+        if not strategy.inited:
+            self.write_log(f"策略{strategy.strategy_name}恢复失败，请先初始化")
+            return
+
+        if strategy.trading:
+            self.write_log(f"{strategy_name}已经启动，请勿做恢复操作")
+            return
+
+        # Restore strategy data(variables)
+        data = self.strategy_data.get(strategy_name, None)
+        variables = {}
+        if data:
+            for name in strategy.variables:
+                if name in ['inited', 'trading']:
+                    continue
+                variables[name] = data.get(name, None)
+
+        self.recover_orders_and_trades()
+
+        self.write_log("策略恢复", strategy)
+        self.call_strategy_func(strategy, strategy.on_recover, variables)
 
         self.put_strategy_event(strategy)
 
@@ -729,7 +607,7 @@ class CtaEngine(BaseEngine):
         strategy = self.strategies[strategy_name]
         if not strategy.trading:
             return
-
+        self.write_log("策略停止", strategy)
         # Call on_stop function of the strategy
         self.call_strategy_func(strategy, strategy.on_stop)
 
@@ -745,6 +623,30 @@ class CtaEngine(BaseEngine):
         # Update GUI
         self.put_strategy_event(strategy)
 
+    def close_strategy_pos(self, strategy_name: str):
+        strategy = self.strategies[strategy_name]
+        if not strategy.trading:
+            return
+
+        # Cancel all orders of the strategy
+        self.cancel_all(strategy)
+
+        if strategy.pos != 0:
+            tick = self.main_engine.get_tick(strategy.vt_symbol)
+            if not tick:
+                self.write_log(f"不存在Tick，请先订阅", strategy)
+                return
+
+            if strategy.pos > 0:
+                strategy.send_order(Direction.SHORT, Offset.CLOSE, tick.last_price - 15, strategy.pos)
+            else:
+                strategy.send_order(Direction.LONG, Offset.CLOSE, tick.last_price + 15, -strategy.pos)
+
+        self.sync_strategy_data(strategy)
+
+        # Update GUI
+        self.put_strategy_event(strategy)
+
     def edit_strategy(self, strategy_name: str, setting: dict):
         """
         Edit parameters of a strategy.
@@ -753,6 +655,27 @@ class CtaEngine(BaseEngine):
         strategy.update_setting(setting)
 
         self.update_strategy_setting(strategy_name, setting)
+        self.put_strategy_event(strategy)
+
+    def modify_strategy_data(self, strategy_name: str, key: str, value):
+        """
+
+        Change parameters or variable of a straegy.
+        """
+        strategy = self.strategies[strategy_name]
+
+        if not hasattr(strategy, key):
+            self.write_log(f"策略{strategy.strategy_name}不存在字段：{key}")
+            return
+
+        _type = type(getattr(strategy, key))
+
+        with self._lock:
+            try:
+                setattr(strategy, key, _type(value))
+            except Exception as e:
+                self.write_log(f"策略{strategy.strategy_name}设置{key}错误--{e}")
+
         self.put_strategy_event(strategy)
 
     def remove_strategy(self, strategy_name: str):
@@ -796,6 +719,23 @@ class CtaEngine(BaseEngine):
         path2 = Path.cwd().joinpath("strategies")
 
         self.load_strategy_class_from_folder(path2, "strategies")
+
+    def recover_orders_and_trades(self):
+        """
+        recover strategy orders from open orders.
+        """
+        orders = self.main_engine.get_all_orders()
+
+        for o in orders:
+            if o.orderRef in self.strategies:
+                self.orderid_strategy_map[o.vt_orderid] = self.strategies[o.orderRef]
+                self.strategy_orderid_map[o.orderRef].add(o.vt_orderid)
+
+        trades = self.main_engine.get_all_trades()
+
+        for t in trades:
+            if t.orderRef in self.strategies:
+                database_manager.save_trade_data([t], t.orderRef)
 
     def load_strategy_class_from_folder(self, path: Path, module_name: str = ""):
         """
@@ -877,11 +817,23 @@ class CtaEngine(BaseEngine):
         for strategy_name in self.strategies.keys():
             self.start_strategy(strategy_name)
 
+    def recover_all_strategies(self):
+        """
+        """
+        for strategy_name in self.strategies.keys():
+            self.recover_strategy(strategy_name)
+
     def stop_all_strategies(self):
         """
         """
         for strategy_name in self.strategies.keys():
             self.stop_strategy(strategy_name)
+
+    def close_all_strategies_pos(self):
+        """
+        """
+        for strategy_name in self.strategies.keys():
+            self.close_strategy_pos(strategy_name)
 
     def load_strategy_setting(self):
         """
@@ -896,6 +848,17 @@ class CtaEngine(BaseEngine):
                 strategy_config["vt_symbol"], 
                 strategy_config["setting"]
             )
+
+    def load_daily_close_setting(self):
+        setting = load_json(self.daily_close_filename)
+
+        if 'time' in setting:
+            try:
+                self.daily_close_setting = datetime.now().replace(hour=setting['time'][0], minute=setting['time'][1], second=0)
+            except Exception as e:
+                self.write_log(f"配置日内平仓错误：{e}")
+        else:
+            self.daily_close_setting = {}
 
     def update_strategy_setting(self, strategy_name: str, setting: dict):
         """

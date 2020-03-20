@@ -199,6 +199,9 @@ class MarketDataChartWidget(ChartWidget):
         with self.updating():
             super().update_history(history)
 
+            if len(history) == 0:
+                return
+
             for ix, bar in enumerate(history):
                 self.dt_ix_map[bar.datetime] = ix
             else:

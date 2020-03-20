@@ -1182,10 +1182,10 @@ class TradeResultMonitor(QtWidgets.QDialog):
         # marketData_df = pd.DataFrame([[o.datetime, o.open_price, o.high_price, o.low_price, o.close_price, o.volume] for o in cur], columns=['datetime', 'open', 'high', 'low', 'close', 'volume']).set_index('datetime', drop=False)
         # marketData_df['openInterest'] = 0
 
-        tradeData_df = pd.DataFrame([[f'{trade_date} {t.time}', t.direction.value, t.price, t.volume] for t in self.trade_values if t.symbol == symbol], columns=['datetime', 'direction', 'price', 'volume']).set_index('datetime', drop=False)
+        tradeData = [t for t in self.trade_values if t.symbol == symbol]
 
 
-        chart = TradeResultVisulizationChart(cur, tradeData_df, title=f"{self.daily_trade_result.name}交易行情")
+        chart = TradeResultVisulizationChart(cur, tradeData, title=f"{self.daily_trade_result.name}交易行情")
         chart.exec_()
 
 class TradeResultVisulizationChart(QtWidgets.QDialog):

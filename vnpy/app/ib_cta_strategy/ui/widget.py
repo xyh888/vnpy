@@ -53,6 +53,12 @@ class CtaManager(QtWidgets.QWidget):
         start_button = QtWidgets.QPushButton("全部启动")
         start_button.clicked.connect(self.cta_engine.start_all_strategies)
 
+        recover_button = QtWidgets.QPushButton("全部恢复")
+        recover_button.clicked.connect(self.cta_engine.recover_all_strategies)
+
+        cover_pos_button = QtWidgets.QPushButton("全部平仓")
+        cover_pos_button.clicked.connect(self.cta_engine.close_all_strategies_pos)
+
         stop_button = QtWidgets.QPushButton("全部停止")
         stop_button.clicked.connect(self.cta_engine.stop_all_strategies)
 
@@ -82,6 +88,8 @@ class CtaManager(QtWidgets.QWidget):
         hbox1.addStretch()
         hbox1.addWidget(init_button)
         hbox1.addWidget(start_button)
+        hbox1.addWidget(recover_button)
+        hbox1.addWidget(cover_pos_button)
         hbox1.addWidget(stop_button)
         hbox1.addWidget(clear_button)
 
@@ -189,11 +197,20 @@ class StrategyManager(QtWidgets.QFrame):
         start_button = QtWidgets.QPushButton("启动")
         start_button.clicked.connect(self.start_strategy)
 
+        recover_button = QtWidgets.QPushButton("恢复")
+        recover_button.clicked.connect(self.recover_strategy)
+
+        cover_pos_button = QtWidgets.QPushButton("平仓")
+        cover_pos_button.clicked.connect(self.close_strategy_pos)
+
         stop_button = QtWidgets.QPushButton("停止")
         stop_button.clicked.connect(self.stop_strategy)
 
         edit_button = QtWidgets.QPushButton("编辑")
         edit_button.clicked.connect(self.edit_strategy)
+
+        modify_button = QtWidgets.QPushButton("修改")
+        modify_button.clicked.connect(self.modify_strategy)
 
         remove_button = QtWidgets.QPushButton("移除")
         remove_button.clicked.connect(self.remove_strategy)
@@ -215,6 +232,8 @@ class StrategyManager(QtWidgets.QFrame):
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(init_button)
         hbox.addWidget(start_button)
+        hbox.addWidget(recover_button)
+        hbox.addWidget(cover_pos_button)
         hbox.addWidget(stop_button)
         hbox.addWidget(edit_button)
         hbox.addWidget(remove_button)
@@ -241,9 +260,17 @@ class StrategyManager(QtWidgets.QFrame):
         """"""
         self.cta_engine.start_strategy(self.strategy_name)
 
+    def recover_strategy(self):
+        """"""
+        self.cta_engine.recover_strategy(self.strategy_name)
+
     def stop_strategy(self):
         """"""
         self.cta_engine.stop_strategy(self.strategy_name)
+
+    def close_strategy_pos(self):
+        """"""
+        self.cta_engine.close_strategy_pos(self.strategy_name)
 
     def edit_strategy(self):
         """"""
@@ -256,6 +283,15 @@ class StrategyManager(QtWidgets.QFrame):
         if n == editor.Accepted:
             setting = editor.get_setting()
             self.cta_engine.edit_strategy(strategy_name, setting)
+
+    def modify_strategy(self):
+        strategy_name = self._data["strategy_name"]
+        modifier = ModifyEditor(strategy_name=strategy_name)
+        n = modifier.exec_()
+
+        if n == modifier.Accepted:
+            key, value = modifier.get_data()
+            self.cta_engine.modify_strategy_data(strategy_name, key, value)
 
     def remove_strategy(self):
         """"""
@@ -445,3 +481,41 @@ class SettingEditor(QtWidgets.QDialog):
             setting[name] = value
 
         return setting
+
+class ModifyEditor(QtWidgets.QDialog):
+    """
+     For creating new strategy and editing strategy parameters.
+     """
+
+    def __init__(
+            self, strategy_name: str = ""
+    ):
+        """"""
+        super(ModifyEditor, self).__init__()
+
+        self.strategy_name = strategy_name
+
+        self.edits = {}
+
+        self.init_ui()
+
+    def init_ui(self):
+        """"""
+        form = QtWidgets.QFormLayout()
+
+        self.setWindowTitle(f"数据修改：{self.strategy_name}")
+        button_text = "修改"
+
+        self.key_edit = QtWidgets.QLineEdit()
+        self.value_edit = QtWidgets.QLineEdit()
+
+        form.addRow(self.key_edit, ":", self.value_edit)
+
+        button = QtWidgets.QPushButton(button_text)
+        button.clicked.connect(self.accept)
+        form.addRow(button)
+        self.setLayout(form)
+
+    def get_data(self):
+        """"""
+        return self.key_edit.text(), self.value_edit.text()

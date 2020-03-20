@@ -401,6 +401,7 @@ class TradeMonitor(BaseMonitor):
         "price": {"display": "价格", "cell": BaseCell, "update": False},
         "volume": {"display": "数量", "cell": BaseCell, "update": False},
         "time": {"display": "时间", "cell": BaseCell, "update": False},
+        "orderRef": {"display": "参考", "cell": BaseCell, "update": False},
         "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
     }
 
@@ -426,6 +427,7 @@ class OrderMonitor(BaseMonitor):
         "traded": {"display": "已成交", "cell": BaseCell, "update": True},
         "status": {"display": "状态", "cell": EnumCell, "update": True},
         "time": {"display": "时间", "cell": BaseCell, "update": True},
+        "orderRef": {"display": "参考", "cell": BaseCell, "update": False},
         "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
     }
 

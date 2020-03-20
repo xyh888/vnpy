@@ -783,7 +783,7 @@ class BacktestingEngine:
                 offset=order.offset,
                 price=trade_price,
                 volume=order.volume,
-                time=self.datetime.strftime("%H:%M:%S"),
+                time=self.datetime,
                 gateway_name=self.gateway_name,
             )
             trade.datetime = self.datetime
@@ -860,7 +860,7 @@ class BacktestingEngine:
                 offset=order.offset,
                 price=trade_price,
                 volume=order.volume,
-                time=self.datetime.strftime("%H:%M:%S"),
+                time=self.datetime,
                 gateway_name=self.gateway_name,
             )
             trade.datetime = self.datetime
@@ -899,8 +899,7 @@ class BacktestingEngine:
         offset: Offset,
         price: float,
         volume: float,
-        stop: bool,
-        lock: bool
+        stop: bool
     ):
         """"""
         price = round_to(price, self.pricetick)

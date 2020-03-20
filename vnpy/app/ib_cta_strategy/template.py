@@ -107,6 +107,13 @@ class CtaTemplate(ABC):
         pass
 
     @virtual
+    def on_recover(self, variables: dict = None):
+        """
+        Callback when strategy is recovered.
+        """
+        pass
+
+    @virtual
     def on_stop(self):
         """
         Callback when strategy is stopped.
@@ -148,29 +155,29 @@ class CtaTemplate(ABC):
         """
         pass
 
-    def buy(self, price: float, volume: float, stop: bool = False, lock: bool = False):
+    def buy(self, price: float, volume: float, stop: bool = False):
         """
         Send buy order to open a long position.
         """
-        return self.send_order(Direction.LONG, Offset.OPEN, price, volume, stop, lock)
+        return self.send_order(Direction.LONG, Offset.OPEN, price, volume, stop)
 
-    def sell(self, price: float, volume: float, stop: bool = False, lock: bool = False):
+    def sell(self, price: float, volume: float, stop: bool = False):
         """
         Send sell order to close a long position.
         """
-        return self.send_order(Direction.SHORT, Offset.CLOSE, price, volume, stop, lock)
+        return self.send_order(Direction.SHORT, Offset.CLOSE, price, volume, stop)
 
-    def short(self, price: float, volume: float, stop: bool = False, lock: bool = False):
+    def short(self, price: float, volume: float, stop: bool = False):
         """
         Send short order to open as short position.
         """
-        return self.send_order(Direction.SHORT, Offset.OPEN, price, volume, stop, lock)
+        return self.send_order(Direction.SHORT, Offset.OPEN, price, volume, stop)
 
-    def cover(self, price: float, volume: float, stop: bool = False, lock: bool = False):
+    def cover(self, price: float, volume: float, stop: bool = False):
         """
         Send cover order to close a short position.
         """
-        return self.send_order(Direction.LONG, Offset.CLOSE, price, volume, stop, lock)
+        return self.send_order(Direction.LONG, Offset.CLOSE, price, volume, stop)
 
     def send_order(
         self,
@@ -179,14 +186,13 @@ class CtaTemplate(ABC):
         price: float,
         volume: float,
         stop: bool = False,
-        lock: bool = False
     ):
         """
         Send a new order.
         """
         if self.trading:
             vt_orderids = self.cta_engine.send_order(
-                self, direction, offset, price, volume, stop, lock
+                self, direction, offset, price, volume, stop
             )
             return vt_orderids
         else:

@@ -272,6 +272,7 @@ class DbTradeData(Document):
     price: float = FloatField()
     volume: float = FloatField()
     time: datetime = DateTimeField()
+    orderRef: str = StringField()
 
     meta = {
         "indexes": [
@@ -297,6 +298,7 @@ class DbTradeData(Document):
         db_trade.price = trade.price
         db_trade.volume = trade.volume
         db_trade.time = parser.parse(trade.time) if isinstance(trade.time, str) else trade.time
+        db_trade.orderRef = trade.orderRef
 
         return db_trade
 
@@ -312,6 +314,7 @@ class DbTradeData(Document):
             volume=self.volume,
             # time=self.time if isinstance(self.time, str) else self.time.strftime("%Y%m%d  %H:%M:%S"),
             time=self.time,
+            orderRef=self.orderRef,
             gateway_name="DB"
         )
         trade.strategy = self.strategy

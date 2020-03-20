@@ -5,7 +5,7 @@ from copy import copy
 from datetime import datetime
 from dateutil import parser
 from queue import Empty
-from threading import Thread, Condition
+from threading import Thread, Condition, Lock
 
 from ibapi import comm
 from ibapi.client import EClient
@@ -18,6 +18,7 @@ from ibapi.ticktype import TickType
 from ibapi.wrapper import EWrapper
 from ibapi.errors import BAD_LENGTH
 from ibapi.common import BarData as IbBarData
+from dataclasses import dataclass
 
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import (
@@ -31,7 +32,8 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-    HistoryRequest
+    HistoryRequest,
+    BaseData
 )
 from vnpy.trader.constant import (
     Product,
@@ -109,6 +111,7 @@ TICKFIELD_IB2VT = {
     8: "volume",
     9: "pre_close",
     14: "open_price",
+    22: "open_interest"
 }
 
 ACCOUNTFIELD_IB2VT = {
@@ -125,6 +128,14 @@ INTERVAL_VT2IB = {
     Interval.DAILY: "1 day",
     Interval.WEEKLY: "1 week"
 }
+
+EVENT_ERROR = "eError"
+
+@dataclass
+class IBError(BaseData):
+    reqId: int = -1
+    code: int = None
+    content: str = ""
 
 
 class IbGateway(BaseGateway):
@@ -230,6 +241,7 @@ class IbApi(EWrapper):
 
         self.client = IbClient(self)
         self.thread = Thread(target=self.client.run)
+        self.orderLock = Lock()
 
     def connectAck(self):  # pylint: disable=invalid-name
         """
@@ -275,6 +287,8 @@ class IbApi(EWrapper):
 
         msg = f"信息通知，代码：{errorCode}，内容: {errorString}, ReqID={reqId}"
         self.gateway.write_log(msg)
+        e = IBError(reqId=reqId, code=errorCode, content=errorString, gateway_name="IB")
+        self.gateway.on_event(EVENT_ERROR, e)
 
     def tickPrice(  # pylint: disable=invalid-name
         self, reqId: TickerId, tickType: TickType, price: float, attrib: TickAttrib
@@ -550,6 +564,7 @@ class IbApi(EWrapper):
             price=execution.price,
             volume=execution.shares,
             time=datetime.strptime(execution.time, "%Y%m%d  %H:%M:%S"),
+            orderRef=execution.orderRef,
             gateway_name=self.gateway_name,
         )
 
@@ -729,19 +744,17 @@ class IbApi(EWrapper):
             self.gateway.write_log(f"不支持的价格类型：{req.type}")
             return ""
 
-        self.orderid += 1
-
         ib_contract = Contract()
         ib_contract.conId = str(req.symbol)
         ib_contract.exchange = EXCHANGE_VT2IB[req.exchange]
 
         ib_order = Order()
-        ib_order.orderId = self.orderid
         ib_order.clientId = self.clientid
         ib_order.action = DIRECTION_VT2IB[req.direction]
         ib_order.orderType = ORDERTYPE_VT2IB[req.type]
         ib_order.totalQuantity = req.volume
         ib_order.outsideRth = True
+        ib_order.orderRef = req.orderRef
         ib_order.account = self.major_account
 
         if req.type == OrderType.LIMIT:
@@ -749,10 +762,14 @@ class IbApi(EWrapper):
         elif req.type == OrderType.STOP:
             ib_order.auxPrice = req.price
 
+        self.orderLock.acquire()
+        self.orderid += 1
+        ib_order.orderId = self.orderid
         self.client.placeOrder(self.orderid, ib_contract, ib_order)
-        self.client.reqIds(1)
-
+        # self.client.reqIds(1)
         order = req.create_order_data(str(self.orderid), self.gateway_name)
+        self.orderLock.release()
+
         self.gateway.on_order(order)
         return order.vt_orderid
 
